@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Videoscriber</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/components.css">
+    <link rel="stylesheet" href="/static/transcript.css">
+</head>
+<body>
+    <header class="topbar">
+        <div class="topbar-left">
+            <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle sidebar">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+            </button>
+            <div class="brand">
+                <div class="brand-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="url(#brandGrad)" stroke-width="2.5">
+                        <defs><linearGradient id="brandGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#a78bfa"/><stop offset="100%" stop-color="#6366f1"/></linearGradient></defs>
+                        <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+                    </svg>
+                </div>
+                <h1 class="topbar-title">Videoscriber</h1>
+            </div>
+        </div>
+        <div class="topbar-center">
+            <div class="topbar-search">
+                <svg class="search-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                <input type="search" id="global-search" placeholder="Search transcriptions..." aria-label="Search transcriptions">
+                <kbd class="search-kbd">&#8984;K</kbd>
+            </div>
+        </div>
+        <div class="topbar-right">
+            <button class="icon-btn" id="shortcuts-btn" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/></svg>
+            </button>
+            <button class="icon-btn" id="theme-toggle" aria-label="Toggle dark mode" title="Toggle theme (D)">
+                <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- Search Overlay -->
+    <div id="search-overlay" class="search-overlay" hidden>
+        <div class="search-dialog">
+            <div class="search-dialog-input">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                <input type="search" id="search-overlay-input" placeholder="Search across all transcriptions..." aria-label="Search">
+                <kbd>Esc</kbd>
+            </div>
+            <div id="search-results" class="search-results"></div>
+        </div>
+    </div>
+
+    <!-- Shortcuts Modal -->
+    <div id="shortcuts-modal" class="modal-overlay" hidden>
+        <div class="modal-dialog shortcuts-dialog">
+            <div class="modal-header">
+                <h3>Keyboard Shortcuts</h3>
+                <button class="modal-close" aria-label="Close">&times;</button>
+            </div>
+            <div class="shortcuts-grid">
+                <div class="shortcut-row"><span>Open search</span><kbd>&#8984;K</kbd></div>
+                <div class="shortcut-row"><span>Toggle theme</span><kbd>D</kbd></div>
+                <div class="shortcut-row"><span>Navigate list</span><kbd>J</kbd> / <kbd>K</kbd></div>
+                <div class="shortcut-row"><span>Open selected</span><kbd>Enter</kbd></div>
+                <div class="shortcut-row"><span>Copy transcript</span><kbd>C</kbd></div>
+                <div class="shortcut-row"><span>Format: Segments</span><kbd>1</kbd></div>
+                <div class="shortcut-row"><span>Format: Text</span><kbd>2</kbd></div>
+                <div class="shortcut-row"><span>Format: SRT</span><kbd>3</kbd></div>
+                <div class="shortcut-row"><span>Format: VTT</span><kbd>4</kbd></div>
+                <div class="shortcut-row"><span>Close / Deselect</span><kbd>Esc</kbd></div>
+                <div class="shortcut-row"><span>Show shortcuts</span><kbd>?</kbd></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <section class="sidebar-upload">
+            <div id="drop-zone" tabindex="0" role="button" aria-label="Upload video files">
+                <div class="drop-zone-inner">
+                    <div class="drop-zone-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    </div>
+                    <div class="drop-zone-text">
+                        <p>Drop files here</p>
+                        <span class="drop-zone-sub">or click to browse</span>
+                    </div>
+                </div>
+                <input type="file" id="file-input" accept=".mp4,.mov,.avi,.mkv,.webm,.m4a,.mp3,.wav,.flac,.ogg" multiple hidden>
+            </div>
+            <label id="diarize-option" class="diarize-toggle" hidden>
+                <input type="checkbox" id="diarize-checkbox">
+                <span>Identify speakers</span>
+            </label>
+            <div id="upload-queue" class="upload-queue"></div>
+        </section>
+
+        <section class="sidebar-list">
+            <div class="list-header">
+                <span class="list-label">Transcriptions</span>
+            </div>
+            <div id="transcription-list">
+                <div class="skeleton-item"><div class="skeleton skeleton-title"></div><div class="skeleton skeleton-meta"></div></div>
+                <div class="skeleton-item"><div class="skeleton skeleton-title"></div><div class="skeleton skeleton-meta"></div></div>
+                <div class="skeleton-item"><div class="skeleton skeleton-title"></div><div class="skeleton skeleton-meta"></div></div>
+            </div>
+        </section>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content" id="main-content">
+        <div id="empty-state" class="empty-state" role="button" tabindex="0" aria-label="Drop or click to upload a video">
+            <div class="empty-state-glow"></div>
+            <div class="empty-state-icon">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="url(#emptyGrad)" stroke-width="1">
+                    <defs><linearGradient id="emptyGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#a78bfa"/><stop offset="100%" stop-color="#6366f1"/></linearGradient></defs>
+                    <path d="M15 10l4.553-2.276A1 1 0 0 1 21 8.618v6.764a1 1 0 0 1-1.447.894L15 14M5 18h8a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2z"/>
+                </svg>
+            </div>
+            <h2 class="empty-state-title">Ready to transcribe</h2>
+            <p class="empty-state-desc">Drop a video here or click to upload</p>
+            <input type="file" id="empty-state-input" accept=".mp4,.mov,.avi,.mkv,.webm,.m4a,.mp3,.wav,.flac,.ogg" multiple hidden>
+        </div>
+
+        <div id="transcript-section" hidden>
+            <!-- Sticky video player -->
+            <div id="video-area" class="video-area">
+                <div id="video-container" class="video-container" hidden>
+                    <video id="preview-player" controls>
+                        <track id="preview-track" kind="subtitles" srclang="en" label="English" default>
+                    </video>
+                </div>
+                <div id="video-upload-prompt" class="video-upload-prompt" hidden>
+                    <button id="btn-upload-video" class="btn-ghost-sm">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                        Add video for subtitle preview
+                    </button>
+                    <input type="file" id="video-file-input" accept=".mp4,.mov,.webm,.mkv" hidden>
+                </div>
+            </div>
+
+            <!-- Transcript Header: title + buttons on one line -->
+            <div class="transcript-header">
+                <div class="transcript-title-row">
+                    <h2 id="transcript-title" class="editable-title" title="Click to rename"></h2>
+                    <button id="btn-rename" class="icon-btn-sm" title="Rename">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                    </button>
+                    <div class="spacer"></div>
+                    <div class="transcript-buttons">
+                        <button id="btn-copy" class="btn-secondary" disabled>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                            <span>Copy</span>
+                        </button>
+                        <button id="btn-download" class="btn-secondary" disabled>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            <span>Download</span>
+                        </button>
+                        <button id="btn-recap" class="btn-primary" disabled>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                            <span>Recap Email</span>
+                        </button>
+                    </div>
+                </div>
+                <input type="text" id="rename-input" class="rename-input" hidden>
+                <!-- Hidden format tabs to keep JS working — defaults to segments -->
+                <div id="format-tabs" hidden>
+                    <button class="tab active" data-format="segments"></button>
+                </div>
+            </div>
+
+            <!-- In-transcript search -->
+            <div id="transcript-search" class="transcript-search" hidden>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+                <input type="search" id="transcript-search-input" placeholder="Find in transcript...">
+                <span id="match-count" class="match-count"></span>
+                <button id="match-prev" class="nav-btn" aria-label="Previous match">&uarr;</button>
+                <button id="match-next" class="nav-btn" aria-label="Next match">&darr;</button>
+            </div>
+
+            <!-- Transcript Content -->
+            <div id="transcript-content" class="transcript-content">
+                <div id="segments-view" class="transcript-segments"></div>
+                <pre id="raw-view" hidden></pre>
+            </div>
+
+            <!-- Processing State -->
+            <div id="processing-state" class="processing-state" hidden>
+                <div class="processing-orb"><div class="orb-inner"></div></div>
+                <p id="processing-status"></p>
+                <div class="progress-track"><div id="processing-progress-bar" class="progress-fill"></div></div>
+                <progress id="processing-progress" value="0" max="100" hidden></progress>
+                <small id="processing-detail"></small>
+            </div>
+
+            <!-- Error State -->
+            <div id="error-state" class="error-state" hidden>
+                <div class="error-icon">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                </div>
+                <p id="error-message"></p>
+                <button id="btn-retry" class="btn-secondary" hidden>Retry Transcription</button>
+            </div>
+        </div>
+    </main>
+
+    <!-- Recap Email Modal -->
+    <div id="recap-modal" class="modal-overlay" hidden>
+        <div class="modal-dialog recap-dialog">
+            <div class="modal-header">
+                <h3>Recap + Next Steps</h3>
+                <button class="modal-close" aria-label="Close">&times;</button>
+            </div>
+            <div class="recap-body">
+                <div id="recap-loading" class="recap-loading">
+                    <div class="processing-orb small"><div class="orb-inner"></div></div>
+                    <p>Generating recap from transcript...</p>
+                </div>
+                <div id="recap-editor" hidden>
+                    <div class="recap-field">
+                        <label for="recap-to">To</label>
+                        <input type="email" id="recap-to" placeholder="recipient@example.com" multiple>
+                    </div>
+                    <div class="recap-field">
+                        <label for="recap-subject">Subject</label>
+                        <input type="text" id="recap-subject">
+                    </div>
+                    <textarea id="recap-content" class="recap-textarea"></textarea>
+                </div>
+            </div>
+            <div class="recap-actions" id="recap-actions" hidden>
+                <button id="recap-regenerate" class="btn-secondary">Regenerate</button>
+                <button id="recap-copy" class="btn-secondary">Copy</button>
+                <button id="recap-send" class="btn-primary">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                    Send Email
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container" class="toast-container" role="status" aria-live="polite"></div>
+    <script type="module" src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+.env
+uploads/
+audio/
+data/
+__pycache__/
+*.pyc
+.venv/
+venv/
+node_modules/
+desktop/out/

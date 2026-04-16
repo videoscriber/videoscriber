@@ -1,0 +1,569 @@
+import asyncio
+import json
+import logging
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+
+from openai import AsyncOpenAI
+
+import database as db
+
+logger = logging.getLogger(__name__)
+
+CHUNK_DURATION = 600  # 10 minutes
+KEEP_VIDEO = os.getenv("KEEP_VIDEO_FOR_PREVIEW", "true").lower() == "true"
+RECAP_MODEL = os.getenv("RECAP_MODEL", "gpt-4o-mini")
+
+
+async def get_duration(file_path: Path) -> float:
+    proc = await asyncio.create_subprocess_exec(
+        "ffprobe", "-v", "quiet", "-print_format", "json", "-show_format",
+        str(file_path),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, _ = await proc.communicate()
+    info = json.loads(stdout)
+    return float(info["format"]["duration"])
+
+
+async def enhance_video(input_path: Path, output_path: Path) -> bool:
+    """Enhance video quality using hardware-accelerated encoding on macOS."""
+    try:
+        filtergraph = (
+            "hqdn3d=3:2:3:2,"
+            "unsharp=5:5:0.8:3:3:0.3,"
+            "eq=brightness=0.03:contrast=1.03:saturation=1.08"
+        )
+
+        # Try hardware-accelerated encoding first (Apple VideoToolbox — ~10-20x faster)
+        proc = await asyncio.create_subprocess_exec(
+            "ffmpeg", "-i", str(input_path),
+            "-vf", filtergraph,
+            "-c:v", "h264_videotoolbox", "-q:v", "65",  # Hardware encoder, quality 0-100
+            "-c:a", "copy",
+            "-movflags", "+faststart",
+            str(output_path), "-y",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate()
+
+        # Fall back to software encoding if hardware fails
+        if proc.returncode != 0:
+            logger.info("Hardware encoding unavailable, falling back to software")
+            proc = await asyncio.create_subprocess_exec(
+                "ffmpeg", "-i", str(input_path),
+                "-vf", filtergraph,
+                "-c:v", "libx264", "-preset", "fast", "-crf", "20",
+                "-c:a", "copy",
+                "-movflags", "+faststart",
+                str(output_path), "-y",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _, stderr = await proc.communicate()
+
+        if proc.returncode != 0:
+            logger.warning("Video enhancement failed: %s", stderr.decode()[-500:])
+            return False
+
+        if output_path.stat().st_size > 0:
+            return True
+        else:
+            output_path.unlink(missing_ok=True)
+            return False
+
+    except Exception as e:
+        logger.warning("Video enhancement failed (non-fatal): %s", e)
+        return False
+
+
+async def extract_audio(video_path: Path, output_path: Path) -> float:
+    duration = await get_duration(video_path)
+
+    proc = await asyncio.create_subprocess_exec(
+        "ffmpeg", "-i", str(video_path),
+        "-vn", "-ac", "1", "-ar", "16000", "-ab", "64k",
+        "-f", "mp3", str(output_path), "-y",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        raise RuntimeError(f"ffmpeg failed: {stderr.decode()}")
+
+    return duration
+
+
+async def split_audio(audio_path: Path, output_dir: Path) -> list[Path]:
+    prefix = output_dir / f"{audio_path.stem}_chunk_"
+    proc = await asyncio.create_subprocess_exec(
+        "ffmpeg", "-i", str(audio_path),
+        "-f", "segment", "-segment_time", str(CHUNK_DURATION),
+        "-c", "copy", f"{prefix}%03d.mp3",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    _, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        raise RuntimeError(f"ffmpeg split failed: {stderr.decode()}")
+
+    chunks = sorted(output_dir.glob(f"{audio_path.stem}_chunk_*.mp3"))
+    return chunks
+
+
+def format_timestamp_srt(seconds: float) -> str:
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    ms = int((seconds % 1) * 1000)
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
+def format_timestamp_vtt(seconds: float) -> str:
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    ms = int((seconds % 1) * 1000)
+    return f"{h:02d}:{m:02d}:{s:02d}.{ms:03d}"
+
+
+def generate_srt(segments: list[dict]) -> str:
+    lines = []
+    for i, seg in enumerate(segments, 1):
+        start = format_timestamp_srt(seg["start"])
+        end = format_timestamp_srt(seg["end"])
+        speaker_prefix = f"[{seg['speaker']}] " if seg.get("speaker") else ""
+        lines.append(f"{i}")
+        lines.append(f"{start} --> {end}")
+        lines.append(f"{speaker_prefix}{seg['text'].strip()}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def generate_vtt(segments: list[dict]) -> str:
+    lines = ["WEBVTT", ""]
+    for seg in segments:
+        start = format_timestamp_vtt(seg["start"])
+        end = format_timestamp_vtt(seg["end"])
+        speaker_prefix = f"[{seg['speaker']}] " if seg.get("speaker") else ""
+        lines.append(f"{start} --> {end}")
+        lines.append(f"{speaker_prefix}{seg['text'].strip()}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+async def transcribe_file(client: AsyncOpenAI, file_path: Path) -> dict:
+    with open(file_path, "rb") as f:
+        response = await client.audio.transcriptions.create(
+            model="whisper-1",
+            file=f,
+            response_format="verbose_json",
+            timestamp_granularities=["segment"],
+        )
+    return response.model_dump()
+
+
+# ============================================================
+# Speaker name identification via LLM
+# ============================================================
+
+async def identify_speaker_names(segments: list[dict], client: AsyncOpenAI) -> list[dict]:
+    """Use GPT to identify real speaker names from transcript context."""
+    speakers = sorted({seg["speaker"] for seg in segments if seg.get("speaker")})
+    if len(speakers) < 2:
+        return segments
+
+    # Build a condensed transcript sample for the LLM (first ~4000 chars)
+    sample_lines = []
+    char_count = 0
+    for seg in segments:
+        if seg.get("speaker"):
+            line = f"{seg['speaker']}: {seg['text'].strip()}"
+            sample_lines.append(line)
+            char_count += len(line)
+            if char_count > 4000:
+                break
+
+    sample = "\n".join(sample_lines)
+
+    try:
+        response = await client.chat.completions.create(
+            model=RECAP_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You analyze transcripts to identify speaker names. "
+                        "Given a transcript with generic speaker labels (Speaker A, Speaker B, etc.), "
+                        "determine the real names of each speaker from context clues in the conversation "
+                        "(introductions, people addressing each other by name, etc.).\n\n"
+                        "Return ONLY a JSON object mapping the original label to the identified name. "
+                        "If you can identify a name, use it (first name only). "
+                        "If you cannot confidently identify a name, assign a friendly distinguishing label "
+                        "based on their role if apparent (e.g., 'Host', 'Interviewer', 'Presenter') "
+                        "or keep the original label but make it friendlier (e.g., 'Speaker A' stays 'Speaker A').\n\n"
+                        "Example response: {\"Speaker A\": \"Sarah\", \"Speaker B\": \"Mike\", \"Speaker C\": \"Speaker C\"}"
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": f"Speakers to identify: {', '.join(speakers)}\n\nTranscript:\n{sample}",
+                },
+            ],
+            response_format={"type": "json_object"},
+        )
+
+        name_map = json.loads(response.choices[0].message.content)
+        logger.info("Speaker name mapping for job: %s", name_map)
+
+        # Apply the mapping
+        for seg in segments:
+            if seg.get("speaker") and seg["speaker"] in name_map:
+                seg["speaker"] = name_map[seg["speaker"]]
+
+    except Exception as e:
+        logger.warning("Speaker identification failed (non-fatal): %s", e)
+        # Keep original labels — this is a best-effort enhancement
+
+    return segments
+
+
+# ============================================================
+# Auto recap generation
+# ============================================================
+
+async def generate_recap(plain_text: str, client: AsyncOpenAI) -> str | None:
+    """Generate a meeting recap email from transcript text."""
+    transcript = plain_text
+    if len(transcript) > 60000:
+        transcript = transcript[:60000] + "\n\n[...transcript truncated for length]"
+
+    try:
+        response = await client.chat.completions.create(
+            model=RECAP_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are the ideal coworker — sharp, warm, and genuinely helpful. "
+                        "You write recap emails that people actually enjoy reading. "
+                        "Your tone is professional but human: a touch of wit when appropriate, "
+                        "always clear, never stuffy or robotic.\n\n"
+                        "Given a meeting transcript, write a recap email in PLAIN TEXT (no markdown, "
+                        "no asterisks, no bold formatting — this will be pasted into an email client).\n\n"
+                        "Format:\n\n"
+                        "Subject: [One clear line suitable as an email subject]\n\n"
+                        "Hey team,\n\n"
+                        "[2-3 sentence summary that captures the vibe and substance of the meeting]\n\n"
+                        "KEY POINTS\n"
+                        "- [bullet points of main topics discussed]\n\n"
+                        "DECISIONS\n"
+                        "- [bullet points — omit this section entirely if no clear decisions were made]\n\n"
+                        "NEXT STEPS\n"
+                        "- [Owner]: [action item] — [deadline if mentioned]\n"
+                        "- [bullet points with names attached when identifiable]\n\n"
+                        "[Brief, friendly sign-off — keep it natural, like a real person wrote it]\n\n"
+                        "Rules:\n"
+                        "- Use real names from the transcript when you can identify them\n"
+                        "- No asterisks, no markdown, no bold/italic formatting\n"
+                        "- Use CAPS for section headers (KEY POINTS, DECISIONS, NEXT STEPS)\n"
+                        "- Keep it concise — respect people's inboxes\n"
+                        "- A touch of personality is welcome but don't force humor"
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": f"Here is the transcript:\n\n{transcript}",
+                },
+            ],
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        logger.warning("Recap generation failed (non-fatal): %s", e)
+        return None
+
+
+# ============================================================
+# Post-processing: speaker names + recap (runs after transcription)
+# ============================================================
+
+async def post_process(job_id: str, all_segments: list[dict], plain_text: str,
+                       video_path: Path | None = None):
+    """Speaker names, recap, and video enhancement — all in parallel. Non-fatal."""
+    client = AsyncOpenAI()
+    has_speakers = any(seg.get("speaker") for seg in all_segments)
+
+    # Run everything in parallel
+    tasks = []
+
+    # Task 0: Speaker identification
+    if has_speakers:
+        tasks.append(identify_speaker_names(all_segments, client))
+    else:
+        tasks.append(_passthrough(all_segments))
+
+    # Task 1: Recap generation
+    tasks.append(generate_recap(plain_text, client))
+
+    # Task 2: Video enhancement
+    if video_path and video_path.exists() and KEEP_VIDEO:
+        enhanced_path = video_path.parent / f"{video_path.stem}_enhanced.mp4"
+        tasks.append(enhance_video(video_path, enhanced_path))
+    else:
+        tasks.append(_passthrough(None))
+
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    updated_segments = results[0] if not isinstance(results[0], Exception) else all_segments
+    recap = results[1] if not isinstance(results[1], Exception) else None
+    enhanced = results[2] if not isinstance(results[2], Exception) else None
+
+    updates = {}
+
+    # Speaker names → regenerate outputs
+    if has_speakers and not isinstance(results[0], Exception):
+        plain_text = " ".join(seg["text"].strip() for seg in updated_segments)
+        updates["transcript_text"] = plain_text
+        updates["transcript_srt"] = generate_srt(updated_segments)
+        updates["transcript_vtt"] = generate_vtt(updated_segments)
+        updates["transcript_segments_json"] = json.dumps(updated_segments)
+
+    if recap:
+        updates["recap"] = recap
+
+    # Video enhancement result
+    if video_path and video_path.exists() and KEEP_VIDEO:
+        enhanced_path = video_path.parent / f"{video_path.stem}_enhanced.mp4"
+        if enhanced:
+            video_path.unlink(missing_ok=True)
+            updates["video_path"] = str(enhanced_path)
+        else:
+            updates["video_path"] = str(video_path)
+
+    if updates:
+        await db.update_transcription(job_id, **updates)
+
+
+async def _passthrough(val):
+    return val
+
+
+# ============================================================
+# Main transcription pipelines
+# ============================================================
+
+async def process_transcription(job_id: str, video_path: Path, audio_dir: Path, diarize: bool = False):
+    # Route to AssemblyAI pipeline if diarization requested
+    assemblyai_key = os.getenv("ASSEMBLYAI_API_KEY")
+    if diarize and assemblyai_key:
+        return await process_transcription_assemblyai(job_id, video_path, audio_dir, assemblyai_key)
+
+    client = AsyncOpenAI()
+    audio_path = audio_dir / f"{job_id}.mp3"
+    success = False
+
+    try:
+        # Stage 1: Extract audio
+        await db.update_transcription(job_id, status="extracting", progress=5)
+        duration = await extract_audio(video_path, audio_path)
+        await db.update_transcription(job_id, duration_seconds=duration, progress=10)
+
+        if audio_path.stat().st_size == 0:
+            raise RuntimeError("No audio track found in the video file")
+
+        # Stage 2: Determine if chunking is needed
+        now = datetime.now(timezone.utc).isoformat()
+        await db.update_transcription(
+            job_id, status="transcribing", progress=15,
+            processing_started_at=now,
+        )
+
+        file_size_mb = audio_path.stat().st_size / (1024 * 1024)
+        if file_size_mb > 24:
+            chunks = await split_audio(audio_path, audio_dir)
+        else:
+            chunks = [audio_path]
+
+        total_chunks = len(chunks)
+        await db.update_transcription(
+            job_id, total_chunks=total_chunks, completed_chunks=0,
+        )
+
+        # Stage 3: Transcribe chunks in parallel (batches of 8)
+        all_segments = []
+        PARALLEL_BATCH = 8
+        completed = 0
+
+        for batch_start in range(0, total_chunks, PARALLEL_BATCH):
+            batch = list(enumerate(chunks[batch_start:batch_start + PARALLEL_BATCH], start=batch_start))
+
+            async def transcribe_chunk(idx, path):
+                chunk_offset = idx * CHUNK_DURATION if total_chunks > 1 else 0
+                result = await transcribe_file(client, path)
+                segs = []
+                for seg in result.get("segments", []):
+                    segs.append({
+                        "start": seg["start"] + chunk_offset,
+                        "end": seg["end"] + chunk_offset,
+                        "text": seg["text"],
+                    })
+                return idx, segs
+
+            results = await asyncio.gather(*(transcribe_chunk(idx, path) for idx, path in batch))
+
+            for idx, segs in sorted(results, key=lambda x: x[0]):
+                all_segments.extend(segs)
+
+            completed += len(batch)
+            progress = 15 + int(completed / total_chunks * 80)
+            await db.update_transcription(
+                job_id, progress=progress, completed_chunks=completed,
+            )
+
+        # Stage 4: Generate output formats
+        plain_text = " ".join(seg["text"].strip() for seg in all_segments)
+        srt_text = generate_srt(all_segments)
+        vtt_text = generate_vtt(all_segments)
+        segments_json = json.dumps(all_segments)
+
+        await db.update_transcription(
+            job_id,
+            status="done",
+            progress=100,
+            transcript_text=plain_text,
+            transcript_srt=srt_text,
+            transcript_vtt=vtt_text,
+            transcript_segments_json=segments_json,
+            completed_at=datetime.now(timezone.utc).isoformat(),
+        )
+        success = True
+
+        # Stage 5: Post-process (speaker names + recap + video enhance) — all in parallel, non-fatal
+        await post_process(job_id, all_segments, plain_text, video_path=video_path)
+
+    except Exception as e:
+        logger.exception("Transcription failed for job %s", job_id)
+        await db.update_transcription(
+            job_id,
+            status="error",
+            error_message=str(e),
+            video_path=str(video_path) if video_path.exists() else None,
+        )
+
+    finally:
+        audio_path.unlink(missing_ok=True)
+        for chunk in audio_dir.glob(f"{job_id}_chunk_*.mp3"):
+            chunk.unlink(missing_ok=True)
+        # Video cleanup handled by post_process; on error keep for retry
+        if not success and video_path.exists():
+            pass  # kept for retry — video_path stored in error handler
+
+
+async def process_transcription_assemblyai(
+    job_id: str, video_path: Path, audio_dir: Path, api_key: str
+):
+    import assemblyai as aai
+
+    aai.settings.api_key = api_key
+    audio_path = audio_dir / f"{job_id}.mp3"
+    success = False
+
+    try:
+        # Stage 1: Extract audio
+        await db.update_transcription(job_id, status="extracting", progress=5)
+        duration = await extract_audio(video_path, audio_path)
+        await db.update_transcription(job_id, duration_seconds=duration, progress=10)
+
+        if audio_path.stat().st_size == 0:
+            raise RuntimeError("No audio track found in the video file")
+
+        # Stage 2: Submit to AssemblyAI with speaker diarization
+        now = datetime.now(timezone.utc).isoformat()
+        await db.update_transcription(
+            job_id, status="transcribing", progress=15,
+            processing_started_at=now, total_chunks=1, completed_chunks=0,
+        )
+
+        config = aai.TranscriptionConfig(
+            speaker_labels=True,
+            speech_model=aai.SpeechModel.best,
+        )
+        transcriber = aai.Transcriber()
+
+        transcript = await asyncio.to_thread(
+            transcriber.transcribe, str(audio_path), config=config
+        )
+
+        if transcript.status == aai.TranscriptStatus.error:
+            raise RuntimeError(f"AssemblyAI error: {transcript.error}")
+
+        await db.update_transcription(job_id, progress=85, completed_chunks=1)
+
+        # Stage 3: Convert AssemblyAI utterances to our segment format
+        all_segments = []
+
+        if transcript.utterances:
+            for utt in transcript.utterances:
+                all_segments.append({
+                    "start": utt.start / 1000.0,
+                    "end": utt.end / 1000.0,
+                    "text": utt.text,
+                    "speaker": f"Speaker {utt.speaker}",
+                })
+        elif transcript.words:
+            current_seg = None
+            for word in transcript.words:
+                if current_seg is None or (word.start / 1000.0 - current_seg["end"]) > 1.0:
+                    if current_seg:
+                        all_segments.append(current_seg)
+                    current_seg = {
+                        "start": word.start / 1000.0,
+                        "end": word.end / 1000.0,
+                        "text": word.text,
+                        "speaker": f"Speaker {word.speaker}" if hasattr(word, "speaker") and word.speaker else None,
+                    }
+                else:
+                    current_seg["end"] = word.end / 1000.0
+                    current_seg["text"] += f" {word.text}"
+            if current_seg:
+                all_segments.append(current_seg)
+
+        # Stage 4: Generate output formats
+        plain_text = " ".join(seg["text"].strip() for seg in all_segments)
+        srt_text = generate_srt(all_segments)
+        vtt_text = generate_vtt(all_segments)
+        segments_json = json.dumps(all_segments)
+
+        await db.update_transcription(
+            job_id,
+            status="done",
+            progress=100,
+            transcript_text=plain_text,
+            transcript_srt=srt_text,
+            transcript_vtt=vtt_text,
+            transcript_segments_json=segments_json,
+            completed_at=datetime.now(timezone.utc).isoformat(),
+        )
+        success = True
+
+        # Stage 5: Post-process (speaker names + recap + video enhance) — all in parallel
+        await post_process(job_id, all_segments, plain_text, video_path=video_path)
+
+    except Exception as e:
+        logger.exception("AssemblyAI transcription failed for job %s", job_id)
+        await db.update_transcription(
+            job_id,
+            status="error",
+            error_message=str(e),
+            video_path=str(video_path) if video_path.exists() else None,
+        )
+
+    finally:
+        audio_path.unlink(missing_ok=True)
+        for chunk in audio_dir.glob(f"{job_id}_chunk_*.mp3"):
+            chunk.unlink(missing_ok=True)
+        if not success and video_path.exists():
+            pass  # kept for retry
