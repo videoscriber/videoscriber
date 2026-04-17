@@ -8,6 +8,7 @@ __pycache__/
 venv/
 node_modules/
 desktop/out/
+desktop/bin/
 
 # Internal Claude Code workspace — never push
 .claude/

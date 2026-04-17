@@ -20,6 +20,7 @@ module.exports = {
       '../templates',
       '../static',
       'scripts',
+      'bin',
     ],
     // osxSign intentionally omitted — unsigned build. Users need to right-click →
     // Open on first launch to bypass Gatekeeper. Add an Apple Developer ID here
