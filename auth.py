@@ -132,44 +132,55 @@ async def create_user(phone: str) -> dict:
 
 async def update_user_profile(user_id: str, full_name: str, email: str) -> None:
     now = datetime.now(timezone.utc).isoformat()
+    sig = default_signature_for(full_name)
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
             "UPDATE users SET full_name = ?, email = ?, profile_completed_at = ?, "
+            "email_signature = COALESCE(email_signature, ?), "
             "consented_tos_at = COALESCE(consented_tos_at, ?), "
             "consented_tos_version = COALESCE(consented_tos_version, ?), "
             "consented_privacy_at = COALESCE(consented_privacy_at, ?), "
             "consented_privacy_version = COALESCE(consented_privacy_version, ?) "
             "WHERE id = ?",
-            (full_name, email, now, now, TOS_VERSION, now, PRIVACY_VERSION, user_id),
+            (full_name, email, now, sig, now, TOS_VERSION, now, PRIVACY_VERSION, user_id),
         )
         await db.commit()
+
+
+def default_signature_for(full_name: str) -> str:
+    """The canonical starting signature we give every new account."""
+    name = (full_name or "").strip() or "Your Name"
+    return f"Cheers,\n\n{name}"
 
 
 async def complete_email_profile(user_id: str, full_name: str, phone: str | None) -> None:
     """Finish profile for an email-mode signup (name + optional phone + consents).
     Email is already set on the user record from the signin step."""
     now = datetime.now(timezone.utc).isoformat()
+    sig = default_signature_for(full_name)
     set_phone = phone is not None and phone != ""
     if set_phone:
         sql = (
             "UPDATE users SET full_name = ?, phone = ?, profile_completed_at = ?, "
+            "email_signature = COALESCE(email_signature, ?), "
             "consented_tos_at = COALESCE(consented_tos_at, ?), "
             "consented_tos_version = COALESCE(consented_tos_version, ?), "
             "consented_privacy_at = COALESCE(consented_privacy_at, ?), "
             "consented_privacy_version = COALESCE(consented_privacy_version, ?) "
             "WHERE id = ?"
         )
-        values = (full_name, phone, now, now, TOS_VERSION, now, PRIVACY_VERSION, user_id)
+        values = (full_name, phone, now, sig, now, TOS_VERSION, now, PRIVACY_VERSION, user_id)
     else:
         sql = (
             "UPDATE users SET full_name = ?, profile_completed_at = ?, "
+            "email_signature = COALESCE(email_signature, ?), "
             "consented_tos_at = COALESCE(consented_tos_at, ?), "
             "consented_tos_version = COALESCE(consented_tos_version, ?), "
             "consented_privacy_at = COALESCE(consented_privacy_at, ?), "
             "consented_privacy_version = COALESCE(consented_privacy_version, ?) "
             "WHERE id = ?"
         )
-        values = (full_name, now, now, TOS_VERSION, now, PRIVACY_VERSION, user_id)
+        values = (full_name, now, sig, now, TOS_VERSION, now, PRIVACY_VERSION, user_id)
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(sql, values)
         await db.commit()
