@@ -119,6 +119,37 @@
             <div id="upload-queue" class="upload-queue"></div>
         </section>
 
+        {% if plan %}
+        <section class="plan-widget">
+            {% if plan == 'plus' %}
+            <div class="plan-widget-card plus">
+                <div class="plan-widget-label">
+                    <span class="plan-widget-dot"></span>
+                    Plus plan
+                </div>
+                <div class="plan-widget-text">Unlimited transcriptions &middot; up to {{ plan_limits.max_file_mb }} MB</div>
+                <a href="/app/settings" class="plan-widget-link">Manage billing &rarr;</a>
+            </div>
+            {% else %}
+            {% set remaining = (plan_limits.monthly_limit - plan_used) if plan_limits.monthly_limit else 0 %}
+            {% set pct = ((plan_used / plan_limits.monthly_limit) * 100) if plan_limits.monthly_limit else 0 %}
+            <div class="plan-widget-card free">
+                <div class="plan-widget-label">
+                    <span class="plan-widget-dot"></span>
+                    Free plan
+                </div>
+                <div class="plan-widget-progress">
+                    <div class="plan-widget-progress-fill" style="width: {{ pct|round(0) }}%"></div>
+                </div>
+                <div class="plan-widget-text">
+                    {{ plan_used }} of {{ plan_limits.monthly_limit }} transcriptions this month
+                </div>
+                <a href="/upgrade" class="plan-widget-upgrade">Upgrade to Plus</a>
+            </div>
+            {% endif %}
+        </section>
+        {% endif %}
+
         <section class="sidebar-list">
             <div class="list-header">
                 <span class="list-label">Transcriptions</span>

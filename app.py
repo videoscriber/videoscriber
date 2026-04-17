@@ -5,6 +5,7 @@ import re
 import shutil
 import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote
 
@@ -44,6 +45,30 @@ VIDEO_PREVIEW_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
 MAX_FILENAME_LEN = 255
 MAX_EMAIL_SUBJECT_LEN = 200
 MAX_EMAIL_BODY_LEN = 100_000
+
+# Freemium plan limits (cloud only; desktop is unmetered)
+FREE_MAX_FILE_MB = int(os.getenv("FREE_MAX_FILE_MB", "250"))
+FREE_MONTHLY_LIMIT = int(os.getenv("FREE_MONTHLY_LIMIT", "3"))
+PLUS_MAX_FILE_MB = int(os.getenv("PLUS_MAX_FILE_MB", "1024"))
+USAGE_WINDOW_DAYS = 30
+
+
+def _plan_limits(plan: str) -> dict:
+    if plan == "plus":
+        return {"max_file_mb": PLUS_MAX_FILE_MB, "monthly_limit": None}
+    return {"max_file_mb": FREE_MAX_FILE_MB, "monthly_limit": FREE_MONTHLY_LIMIT}
+
+
+async def _usage_count(user_id: str) -> int:
+    since = (datetime.now(timezone.utc) - timedelta(days=USAGE_WINDOW_DAYS)).isoformat()
+    return await db.count_transcriptions_since(user_id, since)
+
+
+def _require_owner(record: dict | None, user: dict) -> dict:
+    """404 if record is missing or doesn't belong to the user."""
+    if not record or record.get("user_id") != user["user_id"]:
+        raise HTTPException(404, "Transcription not found")
+    return record
 
 _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
@@ -121,7 +146,15 @@ async def app_home(request: Request):
         return RedirectResponse("/login", status_code=303)
     if not user.get("profile_completed_at"):
         return RedirectResponse("/signup/profile", status_code=303)
-    return templates.TemplateResponse(request, "index.html", {"user": user})
+    plan = user.get("plan") or "free"
+    limits = _plan_limits(plan)
+    used = await _usage_count(user["user_id"])
+    return templates.TemplateResponse(request, "index.html", {
+        "user": user,
+        "plan": plan,
+        "plan_limits": limits,
+        "plan_used": used,
+    })
 
 
 @app.get("/app/settings", response_class=HTMLResponse)
@@ -132,6 +165,23 @@ async def settings_page(request: Request):
     if not user.get("profile_completed_at"):
         return RedirectResponse("/signup/profile", status_code=303)
     return templates.TemplateResponse(request, "settings.html", {"user": user})
+
+
+@app.get("/upgrade", response_class=HTMLResponse)
+async def upgrade_page(request: Request):
+    user = await auth.current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    plan = user.get("plan") or "free"
+    limits = _plan_limits(plan)
+    return templates.TemplateResponse(request, "upgrade.html", {
+        "user": user,
+        "plan": plan,
+        "limits": limits,
+        "free_max_file_mb": FREE_MAX_FILE_MB,
+        "plus_max_file_mb": PLUS_MAX_FILE_MB,
+        "free_monthly_limit": FREE_MONTHLY_LIMIT,
+    })
 
 
 @app.get("/terms", response_class=HTMLResponse)
@@ -151,20 +201,50 @@ async def health():
 
 @app.get("/api/config")
 async def get_config(user: dict = Depends(auth.require_user)):
+    plan = user.get("plan") or "free"
+    limits = _plan_limits(plan)
+    used = await _usage_count(user["user_id"])
     return {
         "diarization_available": bool(os.getenv("ASSEMBLYAI_API_KEY")),
         "user": {
             "id": user["user_id"],
             "full_name": user.get("full_name"),
             "email": user.get("email"),
-            "phone": user["phone"],
+            "phone": user.get("phone"),
+        },
+        "plan": {
+            "tier": plan,
+            "max_file_mb": limits["max_file_mb"],
+            "monthly_limit": limits["monthly_limit"],
+            "used_this_month": used,
+            "remaining": None if limits["monthly_limit"] is None else max(0, limits["monthly_limit"] - used),
+            "window_days": USAGE_WINDOW_DAYS,
         },
     }
 
 
 @app.post("/api/upload")
-async def upload_video(files: list[UploadFile], diarize: str = Form(default="false")):
+async def upload_video(
+    files: list[UploadFile],
+    diarize: str = Form(default="false"),
+    user: dict = Depends(auth.require_user),
+):
     use_diarize = diarize.lower() == "true"
+    plan = user.get("plan") or "free"
+    limits = _plan_limits(plan)
+    max_bytes = limits["max_file_mb"] * 1024 * 1024
+
+    # Enforce the monthly limit BEFORE accepting bytes (applies to free tier only)
+    if limits["monthly_limit"] is not None:
+        used = await _usage_count(user["user_id"])
+        remaining = limits["monthly_limit"] - used - len(files)
+        if used >= limits["monthly_limit"] or remaining < 0:
+            raise HTTPException(
+                402,
+                f"Free plan allows {limits['monthly_limit']} transcriptions per {USAGE_WINDOW_DAYS} days. "
+                f"Upgrade to remove the limit.",
+            )
+
     results = []
     for file in files:
         if not file.filename:
@@ -180,12 +260,16 @@ async def upload_video(files: list[UploadFile], diarize: str = Form(default="fal
         with open(save_path, "wb") as f:
             while chunk := await file.read(1024 * 1024):
                 size += len(chunk)
-                if size > MAX_UPLOAD_MB * 1024 * 1024:
+                if size > max_bytes:
                     save_path.unlink(missing_ok=True)
-                    raise HTTPException(413, f"File too large. Maximum size is {MAX_UPLOAD_MB}MB")
+                    raise HTTPException(
+                        413,
+                        f"File too large. Your {plan} plan allows up to {limits['max_file_mb']}MB per file."
+                        + (" Upgrade for larger files." if plan == "free" else ""),
+                    )
                 f.write(chunk)
 
-        await db.create_transcription(job_id, file.filename, size)
+        await db.create_transcription(job_id, file.filename, size, user_id=user["user_id"])
         asyncio.create_task(_run_with_semaphore(job_id, save_path, use_diarize))
         results.append({"id": job_id, "status": "pending"})
 
@@ -198,26 +282,22 @@ async def _run_with_semaphore(job_id: str, video_path: Path, diarize: bool = Fal
 
 
 @app.get("/api/transcriptions")
-async def list_transcriptions():
-    return await db.list_transcriptions()
+async def list_transcriptions(user: dict = Depends(auth.require_user)):
+    return await db.list_transcriptions(user["user_id"])
 
 
 @app.get("/api/transcriptions/{job_id}")
-async def get_transcription(job_id: str):
-    record = await db.get_transcription(job_id)
-    if not record:
-        raise HTTPException(404, "Transcription not found")
+async def get_transcription(job_id: str, user: dict = Depends(auth.require_user)):
+    record = _require_owner(await db.get_transcription(job_id), user)
     return record
 
 
 @app.get("/api/transcriptions/{job_id}/download/{fmt}")
-async def download_transcription(job_id: str, fmt: str):
+async def download_transcription(job_id: str, fmt: str, user: dict = Depends(auth.require_user)):
     if fmt not in ("txt", "srt", "vtt"):
         raise HTTPException(400, "Format must be txt, srt, or vtt")
 
-    record = await db.get_transcription(job_id)
-    if not record:
-        raise HTTPException(404, "Transcription not found")
+    record = _require_owner(await db.get_transcription(job_id), user)
     if record["status"] != "done":
         raise HTTPException(400, "Transcription not complete")
 
@@ -236,10 +316,8 @@ async def download_transcription(job_id: str, fmt: str):
 
 
 @app.get("/api/transcriptions/{job_id}/vtt-inline")
-async def vtt_inline(job_id: str):
-    record = await db.get_transcription(job_id)
-    if not record:
-        raise HTTPException(404, "Transcription not found")
+async def vtt_inline(job_id: str, user: dict = Depends(auth.require_user)):
+    record = _require_owner(await db.get_transcription(job_id), user)
     if record["status"] != "done":
         raise HTTPException(400, "Transcription not complete")
 
@@ -250,10 +328,8 @@ async def vtt_inline(job_id: str):
 
 
 @app.patch("/api/transcriptions/{job_id}")
-async def rename_transcription(job_id: str, filename: str = Form(...)):
-    record = await db.get_transcription(job_id)
-    if not record:
-        raise HTTPException(404, "Transcription not found")
+async def rename_transcription(job_id: str, filename: str = Form(...), user: dict = Depends(auth.require_user)):
+    record = _require_owner(await db.get_transcription(job_id), user)
     clean = _safe_filename(filename)
     if not clean:
         raise HTTPException(400, "Filename cannot be empty")
@@ -262,10 +338,8 @@ async def rename_transcription(job_id: str, filename: str = Form(...)):
 
 
 @app.delete("/api/transcriptions/{job_id}")
-async def delete_transcription(job_id: str):
-    record = await db.get_transcription(job_id)
-    if not record:
-        raise HTTPException(404, "Transcription not found")
+async def delete_transcription(job_id: str, user: dict = Depends(auth.require_user)):
+    record = _require_owner(await db.get_transcription(job_id), user)
 
     # Clean up video file if stored
     if record.get("video_path"):
@@ -276,10 +350,8 @@ async def delete_transcription(job_id: str):
 
 
 @app.post("/api/transcriptions/{job_id}/retry")
-async def retry_transcription(job_id: str):
-    record = await db.get_transcription(job_id)
-    if not record:
-        raise HTTPException(404, "Transcription not found")
+async def retry_transcription(job_id: str, user: dict = Depends(auth.require_user)):
+    record = _require_owner(await db.get_transcription(job_id), user)
     if record["status"] != "error":
         raise HTTPException(400, "Only failed transcriptions can be retried")
     if not record.get("video_path") or not Path(record["video_path"]).exists():
@@ -300,17 +372,15 @@ async def retry_transcription(job_id: str):
 
 
 @app.get("/api/search")
-async def search_transcriptions(q: str = ""):
+async def search_transcriptions(q: str = "", user: dict = Depends(auth.require_user)):
     if not q or len(q) < 2:
         return []
-    return await db.search_transcriptions(q)
+    return await db.search_transcriptions(q, user_id=user["user_id"])
 
 
 @app.post("/api/transcriptions/{job_id}/video")
-async def upload_video_preview(job_id: str, file: UploadFile):
-    record = await db.get_transcription(job_id)
-    if not record:
-        raise HTTPException(404, "Transcription not found")
+async def upload_video_preview(job_id: str, file: UploadFile, user: dict = Depends(auth.require_user)):
+    record = _require_owner(await db.get_transcription(job_id), user)
 
     ext = Path(file.filename).suffix.lower() if file.filename else ".mp4"
     if ext not in VIDEO_PREVIEW_EXTENSIONS:
@@ -332,10 +402,8 @@ async def upload_video_preview(job_id: str, file: UploadFile):
 
 
 @app.get("/api/transcriptions/{job_id}/video")
-async def get_video(job_id: str):
-    record = await db.get_transcription(job_id)
-    if not record:
-        raise HTTPException(404, "Transcription not found")
+async def get_video(job_id: str, user: dict = Depends(auth.require_user)):
+    record = _require_owner(await db.get_transcription(job_id), user)
     if not record.get("video_path") or not Path(record["video_path"]).exists():
         raise HTTPException(404, "Video file not found")
 
@@ -354,10 +422,8 @@ async def get_video(job_id: str):
 
 
 @app.delete("/api/transcriptions/{job_id}/video")
-async def delete_video(job_id: str):
-    record = await db.get_transcription(job_id)
-    if not record:
-        raise HTTPException(404, "Transcription not found")
+async def delete_video(job_id: str, user: dict = Depends(auth.require_user)):
+    record = _require_owner(await db.get_transcription(job_id), user)
     if record.get("video_path"):
         Path(record["video_path"]).unlink(missing_ok=True)
         await db.update_transcription(job_id, video_path=None)
@@ -365,10 +431,8 @@ async def delete_video(job_id: str):
 
 
 @app.post("/api/transcriptions/{job_id}/recap")
-async def get_or_generate_recap(job_id: str, regenerate: bool = False):
-    record = await db.get_transcription(job_id)
-    if not record:
-        raise HTTPException(404, "Transcription not found")
+async def get_or_generate_recap(job_id: str, regenerate: bool = False, user: dict = Depends(auth.require_user)):
+    record = _require_owner(await db.get_transcription(job_id), user)
     if record["status"] != "done":
         raise HTTPException(400, "Transcription not complete")
 
@@ -400,6 +464,7 @@ async def send_email(
     to: str = Form(...),
     subject: str = Form(...),
     body: str = Form(...),
+    user: dict = Depends(auth.require_user),
 ):
     import smtplib
     from email.message import EmailMessage

@@ -485,7 +485,7 @@ async def process_transcription_assemblyai(
 
         config = aai.TranscriptionConfig(
             speaker_labels=True,
-            speech_model=aai.SpeechModel.best,
+            speech_models=[aai.SpeechModel.universal],
         )
         transcriber = aai.Transcriber()
 

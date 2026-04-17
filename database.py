@@ -8,6 +8,7 @@ DB_PATH = Path("data/transcriptions.db")
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS transcriptions (
     id TEXT PRIMARY KEY,
+    user_id TEXT,
     filename TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
     progress INTEGER DEFAULT 0,
@@ -43,7 +44,12 @@ CREATE TABLE IF NOT EXISTS users (
     consented_privacy_version TEXT,
     disabled_at TEXT,
     created_at TEXT NOT NULL,
-    last_login_at TEXT
+    last_login_at TEXT,
+    plan TEXT NOT NULL DEFAULT 'free',
+    stripe_customer_id TEXT,
+    stripe_payment_method_id TEXT,
+    plan_activated_at TEXT,
+    custom_email_domain TEXT
 );
 -- Partial unique indexes: phone or email can be null, but must be unique if present.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone_unique ON users(phone) WHERE phone IS NOT NULL;
@@ -105,6 +111,15 @@ MIGRATION_COLUMNS = [
     ("recap_status", "TEXT"),
     ("speaker_id_status", "TEXT"),
     ("enhancement_status", "TEXT"),
+    ("user_id", "TEXT"),
+]
+
+USER_MIGRATION_COLUMNS = [
+    ("plan", "TEXT NOT NULL DEFAULT 'free'"),
+    ("stripe_customer_id", "TEXT"),
+    ("stripe_payment_method_id", "TEXT"),
+    ("plan_activated_at", "TEXT"),
+    ("custom_email_domain", "TEXT"),
 ]
 
 
@@ -148,15 +163,29 @@ async def init_db():
         await _migrate_users_phone_nullable(db)
         await db.executescript(SCHEMA)
 
-        # Migrate existing databases: add new columns if missing
+        # Migrate transcriptions: add new columns if missing
         async with db.execute("PRAGMA table_info(transcriptions)") as cursor:
             existing = {row[1] async for row in cursor}
-
         for col_name, col_type in MIGRATION_COLUMNS:
             if col_name not in existing:
                 await db.execute(
                     f"ALTER TABLE transcriptions ADD COLUMN {col_name} {col_type}"
                 )
+
+        # Migrate users: add new columns if missing (plan, stripe_*, etc.)
+        async with db.execute("PRAGMA table_info(users)") as cursor:
+            existing_user = {row[1] async for row in cursor}
+        for col_name, col_type in USER_MIGRATION_COLUMNS:
+            if col_name not in existing_user:
+                await db.execute(
+                    f"ALTER TABLE users ADD COLUMN {col_name} {col_type}"
+                )
+
+        # Create indexes that reference migrated columns AFTER migrations ran.
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_transcriptions_user_created "
+            "ON transcriptions(user_id, created_at DESC)"
+        )
 
         # Mark any interrupted jobs as error on startup
         await db.execute(
@@ -172,13 +201,44 @@ async def init_db():
         await db.commit()
 
 
-async def create_transcription(id: str, filename: str, file_size: int):
+async def create_transcription(id: str, filename: str, file_size: int, user_id: str | None = None):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            "INSERT INTO transcriptions (id, filename, file_size, status, progress, created_at) "
-            "VALUES (?, ?, ?, 'pending', 0, ?)",
-            (id, filename, file_size, datetime.now(timezone.utc).isoformat()),
+            "INSERT INTO transcriptions (id, user_id, filename, file_size, status, progress, created_at) "
+            "VALUES (?, ?, ?, ?, 'pending', 0, ?)",
+            (id, user_id, filename, file_size, datetime.now(timezone.utc).isoformat()),
         )
+        await db.commit()
+
+
+async def count_transcriptions_since(user_id: str, since_iso: str) -> int:
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM transcriptions WHERE user_id = ? AND created_at >= ?",
+            (user_id, since_iso),
+        ) as cur:
+            (count,) = await cur.fetchone()
+            return count
+
+
+async def set_user_plan(user_id: str, plan: str,
+                        stripe_customer_id: str | None = None,
+                        stripe_payment_method_id: str | None = None) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    async with aiosqlite.connect(DB_PATH) as db:
+        if plan == 'plus':
+            await db.execute(
+                "UPDATE users SET plan = ?, plan_activated_at = ?, "
+                "stripe_customer_id = COALESCE(?, stripe_customer_id), "
+                "stripe_payment_method_id = COALESCE(?, stripe_payment_method_id) "
+                "WHERE id = ?",
+                (plan, now, stripe_customer_id, stripe_payment_method_id, user_id),
+            )
+        else:
+            await db.execute(
+                "UPDATE users SET plan = ?, plan_activated_at = NULL WHERE id = ?",
+                (plan, user_id),
+            )
         await db.commit()
 
 
@@ -216,27 +276,33 @@ async def get_transcription(id: str) -> dict | None:
             return dict(row) if row else None
 
 
-async def list_transcriptions() -> list[dict]:
+async def list_transcriptions(user_id: str | None = None) -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
+        if user_id is None:
+            return []
         async with db.execute(
             "SELECT id, filename, status, progress, error_message, duration_seconds, "
             "file_size, total_chunks, completed_chunks, processing_started_at, "
             "video_path, retry_count, recap, recap_status, speaker_id_status, "
             "enhancement_status, created_at, completed_at "
-            "FROM transcriptions ORDER BY created_at DESC"
+            "FROM transcriptions WHERE user_id = ? ORDER BY created_at DESC",
+            (user_id,),
         ) as cursor:
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
 
 
-async def search_transcriptions(query: str) -> list[dict]:
+async def search_transcriptions(query: str, user_id: str | None = None) -> list[dict]:
     results = []
+    if user_id is None:
+        return results
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
             "SELECT id, filename, transcript_segments_json FROM transcriptions "
-            "WHERE status = 'done' AND transcript_segments_json IS NOT NULL"
+            "WHERE user_id = ? AND status = 'done' AND transcript_segments_json IS NOT NULL",
+            (user_id,),
         ) as cursor:
             async for row in cursor:
                 row = dict(row)
