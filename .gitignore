@@ -8,3 +8,8 @@ __pycache__/
 venv/
 node_modules/
 desktop/out/
+
+# Internal Claude Code workspace — never push
+.claude/
+CLAUDE.md
+CLAUDE.local.md

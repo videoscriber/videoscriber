@@ -1,10 +1,12 @@
 import asyncio
 import logging
 import os
+import re
 import shutil
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import quote
 
 import uvicorn
 from dotenv import load_dotenv
@@ -32,6 +34,34 @@ ALLOWED_EXTENSIONS = {
     ".mp4", ".mov", ".avi", ".mkv", ".webm",
     ".m4a", ".mp3", ".wav", ".flac", ".ogg",
 }
+VIDEO_PREVIEW_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
+
+MAX_FILENAME_LEN = 255
+MAX_EMAIL_SUBJECT_LEN = 200
+MAX_EMAIL_BODY_LEN = 100_000
+
+_EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
+def _validate_email(addr: str) -> str:
+    addr = addr.strip()
+    if not addr or len(addr) > 254 or not _EMAIL_RE.match(addr):
+        raise HTTPException(400, "Invalid email address")
+    return addr
+
+
+def _reject_crlf(value: str, field: str) -> str:
+    if "\r" in value or "\n" in value:
+        raise HTTPException(400, f"Invalid characters in {field}")
+    return value
+
+
+def _safe_filename(name: str) -> str:
+    """Strip path components and control chars; cap length. May return empty string."""
+    name = Path(name).name  # drop any directory components
+    # Drop control chars and double-quotes (which would break Content-Disposition)
+    name = "".join(c for c in name if c.isprintable() and c != '"')
+    return name.strip()[:MAX_FILENAME_LEN]
 
 semaphore = asyncio.Semaphore(MAX_CONCURRENT_JOBS)
 
@@ -132,11 +162,14 @@ async def download_transcription(job_id: str, fmt: str):
 
     field_map = {"txt": "transcript_text", "srt": "transcript_srt", "vtt": "transcript_vtt"}
     content = record[field_map[fmt]] or ""
-    filename = Path(record["filename"]).stem + f".{fmt}"
+    stem = _safe_filename(Path(record["filename"]).stem) or "transcript"
+    filename = f"{stem}.{fmt}"
+    # RFC 5987 encoding handles non-ASCII and guards against header injection
+    disposition = f"attachment; filename=\"{filename}\"; filename*=UTF-8''{quote(filename)}"
 
     return PlainTextResponse(
         content,
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": disposition},
         media_type="text/plain",
     )
 
@@ -160,8 +193,11 @@ async def rename_transcription(job_id: str, filename: str = Form(...)):
     record = await db.get_transcription(job_id)
     if not record:
         raise HTTPException(404, "Transcription not found")
-    await db.update_transcription(job_id, filename=filename.strip())
-    return {"ok": True, "filename": filename.strip()}
+    clean = _safe_filename(filename)
+    if not clean:
+        raise HTTPException(400, "Filename cannot be empty")
+    await db.update_transcription(job_id, filename=clean)
+    return {"ok": True, "filename": clean}
 
 
 @app.delete("/api/transcriptions/{job_id}")
@@ -216,10 +252,18 @@ async def upload_video_preview(job_id: str, file: UploadFile):
         raise HTTPException(404, "Transcription not found")
 
     ext = Path(file.filename).suffix.lower() if file.filename else ".mp4"
+    if ext not in VIDEO_PREVIEW_EXTENSIONS:
+        raise HTTPException(400, f"Unsupported preview format {ext}. Allowed: {', '.join(sorted(VIDEO_PREVIEW_EXTENSIONS))}")
     save_path = UPLOAD_DIR / f"{job_id}_preview{ext}"
 
+    size = 0
+    max_bytes = MAX_UPLOAD_MB * 1024 * 1024
     with open(save_path, "wb") as f:
         while chunk := await file.read(1024 * 1024):
+            size += len(chunk)
+            if size > max_bytes:
+                save_path.unlink(missing_ok=True)
+                raise HTTPException(413, f"File too large. Maximum size is {MAX_UPLOAD_MB}MB")
             f.write(chunk)
 
     await db.update_transcription(job_id, video_path=str(save_path))
@@ -294,7 +338,16 @@ async def send_email(
     body: str = Form(...),
 ):
     import smtplib
-    from email.mime.text import MIMEText
+    from email.message import EmailMessage
+
+    to = _validate_email(to)
+    subject = _reject_crlf(subject.strip(), "subject")
+    if not subject:
+        raise HTTPException(400, "Subject cannot be empty")
+    if len(subject) > MAX_EMAIL_SUBJECT_LEN:
+        raise HTTPException(400, f"Subject too long (max {MAX_EMAIL_SUBJECT_LEN} chars)")
+    if len(body) > MAX_EMAIL_BODY_LEN:
+        raise HTTPException(400, f"Body too long (max {MAX_EMAIL_BODY_LEN} chars)")
 
     smtp_host = os.getenv("SMTP_HOST")
     smtp_port = int(os.getenv("SMTP_PORT", "587"))
@@ -305,18 +358,25 @@ async def send_email(
     if not all([smtp_host, smtp_user, smtp_pass]):
         raise HTTPException(400, "Email not configured. Set SMTP_HOST, SMTP_USER, and SMTP_PASS in .env")
 
-    msg = MIMEText(body)
+    msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"] = from_addr
     msg["To"] = to
+    msg.set_content(body)
 
     try:
         with smtplib.SMTP(smtp_host, smtp_port) as server:
             server.starttls()
             server.login(smtp_user, smtp_pass)
             server.send_message(msg)
-    except Exception as e:
-        raise HTTPException(500, f"Failed to send email: {e}")
+    except smtplib.SMTPAuthenticationError:
+        raise HTTPException(502, "SMTP authentication failed. Check SMTP_USER and SMTP_PASS.")
+    except smtplib.SMTPException as e:
+        logger.warning("SMTP failure: %s", e)
+        raise HTTPException(502, "Failed to send email via SMTP server.")
+    except OSError as e:
+        logger.warning("SMTP connection failure: %s", e)
+        raise HTTPException(502, "Could not connect to SMTP server.")
 
     return {"ok": True}
 
