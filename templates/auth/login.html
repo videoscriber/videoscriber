@@ -2,9 +2,9 @@
 {% block title %}{% if mode == 'signup' %}Sign up{% else %}Log in{% endif %} — Videoscriber{% endblock %}
 {% block nav %}
     {% if mode == 'signup' %}
-    <a href="/login">Log in</a>
+    <a href="/login" class="nav-link">Log in</a>
     {% else %}
-    <a href="/signup" class="btn btn-primary btn-sm">Get started</a>
+    <a href="/signup" class="nav-cta">Get started</a>
     {% endif %}
 {% endblock %}
 {% block content %}

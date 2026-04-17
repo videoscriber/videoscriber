@@ -4,9 +4,16 @@
     background: var(--bg);
     color: var(--text);
     font-family: var(--font);
+    /* Override the authenticated-app's body rules in style.css which lock the
+       page to viewport height and hide overflow for its grid layout. */
+    height: auto;
+    overflow: visible;
     min-height: 100vh;
     display: flex;
     flex-direction: column;
+    grid-template-rows: none;
+    grid-template-columns: none;
+    grid-template-areas: none;
 }
 
 /* Header */
@@ -28,19 +35,66 @@
     display: flex;
     align-items: center;
 }
+.brand-logo {
+    height: 40px;
+    width: auto;
+    display: block;
+}
+.public-footer-brand .brand-logo { height: 32px; }
 .public-nav {
     display: flex;
     align-items: center;
-    gap: 24px;
+    gap: 8px;
 }
-.public-nav a {
+.public-nav .nav-link {
     color: var(--text-secondary);
     text-decoration: none;
     font-weight: 500;
     font-size: 14px;
-    transition: color var(--fast) var(--ease);
+    padding: 9px 16px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    transition: color 200ms ease, background 200ms ease, border-color 200ms ease;
 }
-.public-nav a:hover { color: var(--text); }
+.public-nav .nav-link:hover {
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.08);
+}
+.public-nav .nav-cta {
+    position: relative;
+    color: #fff;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 14px;
+    padding: 9px 18px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #a78bfa 0%, #6366f1 60%, #4f46e5 100%);
+    border: 1px solid rgba(167, 139, 250, 0.3);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    overflow: hidden;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.12),
+        0 6px 20px -4px rgba(99, 102, 241, 0.5);
+    transition: transform 200ms ease, box-shadow 200ms ease;
+}
+.public-nav .nav-cta::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: linear-gradient(110deg, transparent 35%, rgba(255,255,255,0.28) 50%, transparent 65%);
+    transform: translateX(-100%);
+    transition: transform 700ms cubic-bezier(0.16, 1, 0.3, 1);
+    pointer-events: none;
+}
+.public-nav .nav-cta:hover {
+    transform: translateY(-1px);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.18),
+        0 10px 26px -4px rgba(99, 102, 241, 0.65);
+}
+.public-nav .nav-cta:hover::before { transform: translateX(100%); }
 
 /* Main */
 .public-main {

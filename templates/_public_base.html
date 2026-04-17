@@ -12,16 +12,17 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
     <link rel="stylesheet" href="/static/public.css">
+    {% block extra_css %}{% endblock %}
 </head>
 <body class="public-body">
     <header class="public-header">
         <a href="/" class="public-brand" aria-label="Videoscriber home">
-            {% include 'partials/logo.svg' %}
+            <img src="/static/brand/logo.svg" alt="Videoscriber" class="brand-logo">
         </a>
         <nav class="public-nav">
             {% block nav %}
-            <a href="/login">Log in</a>
-            <a href="/signup" class="btn btn-primary btn-sm">Get started</a>
+            <a href="/login" class="nav-link">Log in</a>
+            <a href="/signup" class="nav-cta">Get started</a>
             {% endblock %}
         </nav>
     </header>
@@ -29,7 +30,7 @@
     <footer class="public-footer">
         <div class="public-footer-inner">
             <div class="public-footer-brand">
-                {% include 'partials/logo.svg' %}
+                <img src="/static/brand/logo.svg" alt="Videoscriber" class="brand-logo">
                 <span class="muted">&copy; 2026 Videoscriber LLC</span>
             </div>
             <nav class="public-footer-links">
