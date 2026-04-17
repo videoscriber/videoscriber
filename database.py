@@ -55,7 +55,9 @@ CREATE TABLE IF NOT EXISTS users (
     custom_email_domain_id TEXT,
     custom_email_domain_status TEXT,
     email_signature TEXT,
-    email_branding_hidden INTEGER DEFAULT 0
+    email_branding_hidden INTEGER DEFAULT 0,
+    business TEXT,
+    title TEXT
 );
 -- Partial unique indexes: phone or email can be null, but must be unique if present.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone_unique ON users(phone) WHERE phone IS NOT NULL;
@@ -167,6 +169,8 @@ USER_MIGRATION_COLUMNS = [
     ("custom_email_domain_status", "TEXT"),
     ("email_signature", "TEXT"),
     ("email_branding_hidden", "INTEGER DEFAULT 0"),
+    ("business", "TEXT"),
+    ("title", "TEXT"),
 ]
 
 

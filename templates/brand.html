@@ -1,7 +1,15 @@
 {% extends "_public_base.html" %}
 {% block title %}Videoscriber brand assets{% endblock %}
-{% block meta_description %}Download Videoscriber logos, marks, and wordmarks in SVG and PNG. Full logo, icon only, wordmark only, colored and monochrome variants.{% endblock %}
+{% block meta_description %}Download Videoscriber logos, marks, wordmarks, and avatar icons. Each variant ships as a single zip with SVG and PNG at every usable size.{% endblock %}
 {% block extra_css %}<link rel="stylesheet" href="/static/landing.css">{% endblock %}
+
+{% macro kit_dl(slug, filecount) -%}
+<a href="/brand/kit/{{ slug }}.zip" class="kit-download" download>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+    Download kit
+    <span style="color: var(--text-muted); font-weight: 500;">({{ filecount }} files)</span>
+</a>
+{%- endmacro %}
 
 {% block content %}
 <div class="landing">
@@ -14,116 +22,97 @@
     </div>
     <h1 class="hero-title">Logos, marks, <span class="grad">and wordmarks.</span></h1>
     <p class="hero-lead">
-        Every Videoscriber asset you need for profiles, decks, integrations, or press. SVG for scaling, PNG for anywhere that still wants raster. Free to use when linking back to Videoscriber.
+        Every Videoscriber asset you need for profiles, decks, integrations, or press. Each variant ships as a single zip with SVG plus PNG at every usable size.
     </p>
 </section>
 
+{# =============================================================== FULL LOGO === #}
 <section class="section reveal">
     <div class="section-kicker">Full logo</div>
     <h2 class="section-title">Icon plus <span class="grad">wordmark.</span></h2>
-    <p class="section-lead">Use the full logo when there&rsquo;s room. Default to the colored version; fall back to mono when the surface is busy or one-color printing is required.</p>
+    <p class="section-lead">Use the full logo when there&rsquo;s room. Default to the colored version; fall back to mono when the surface is busy.</p>
 
     <div class="features-grid">
         <article class="feature-card">
-            <div style="background: #ffffff; border-radius: 10px; padding: 28px; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; min-height: 120px;">
-                <img src="/static/brand/logo.svg?v=5" alt="Videoscriber logo, colored" style="max-height: 56px; width: auto;">
+            <div style="background: #ffffff; border-radius: 10px; padding: 28px; margin-bottom: 20px; display: flex; align-items: center; justify-content: center; min-height: 160px;">
+                <img src="/static/brand/logo.svg?v=5" alt="Videoscriber logo, colored" style="max-height: 72px; max-width: 100%; height: auto;">
             </div>
             <h3>Colored</h3>
             <p>Primary logo. Works on any surface with enough contrast.</p>
-            <div style="display:flex; gap:8px; flex-wrap: wrap;">
-                <a href="/static/brand/logo.svg" download class="btn-glass" style="font-size:13px; padding: 8px 14px;">SVG</a>
-                <a href="/static/brand/logo.png" download class="btn-glass" style="font-size:13px; padding: 8px 14px;">PNG</a>
-            </div>
+            {{ kit_dl('logo', 4) }}
         </article>
         <article class="feature-card">
-            <div style="background: #ffffff; border-radius: 10px; padding: 28px; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; min-height: 120px;">
-                <img src="/static/brand/logo-mono-black.svg" alt="Videoscriber logo, black" style="max-height: 56px; width: auto;">
+            <div style="background: #ffffff; border-radius: 10px; padding: 28px; margin-bottom: 20px; display: flex; align-items: center; justify-content: center; min-height: 160px;">
+                <img src="/static/brand/logo-mono-black.svg" alt="Videoscriber logo, black" style="max-height: 72px; max-width: 100%; height: auto;">
             </div>
             <h3>Mono black</h3>
             <p>For light backgrounds, single-color printing, or muted contexts.</p>
-            <div style="display:flex; gap:8px; flex-wrap: wrap;">
-                <a href="/static/brand/logo-mono-black.svg" download class="btn-glass" style="font-size:13px; padding: 8px 14px;">SVG</a>
-                <a href="/static/brand/logo-mono-black.png" download class="btn-glass" style="font-size:13px; padding: 8px 14px;">PNG</a>
-            </div>
+            {{ kit_dl('logo-mono-black', 4) }}
         </article>
         <article class="feature-card">
-            <div style="background: #09090b; border-radius: 10px; padding: 28px; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; min-height: 120px;">
-                <img src="/static/brand/logo-mono-white.svg" alt="Videoscriber logo, white" style="max-height: 56px; width: auto;">
+            <div style="background: #09090b; border-radius: 10px; padding: 28px; margin-bottom: 20px; display: flex; align-items: center; justify-content: center; min-height: 160px;">
+                <img src="/static/brand/logo-mono-white.svg" alt="Videoscriber logo, white" style="max-height: 72px; max-width: 100%; height: auto;">
             </div>
             <h3>Mono white</h3>
             <p>For dark backgrounds and overlays. Drops the gradient for flat contrast.</p>
-            <div style="display:flex; gap:8px; flex-wrap: wrap;">
-                <a href="/static/brand/logo-mono-white.svg" download class="btn-glass" style="font-size:13px; padding: 8px 14px;">SVG</a>
-                <a href="/static/brand/logo-mono-white.png" download class="btn-glass" style="font-size:13px; padding: 8px 14px;">PNG</a>
-            </div>
+            {{ kit_dl('logo-mono-white', 4) }}
         </article>
     </div>
 </section>
 
+{# ==================================================================== MARK === #}
 <section class="section reveal">
     <div class="section-kicker">Mark</div>
     <h2 class="section-title">Icon only, <span class="grad">square.</span></h2>
-    <p class="section-lead">Use the mark when space is tight: favicons, app icons, social tiles, inline UI. The colored version is the default.</p>
+    <p class="section-lead">Use the mark when space is tight: favicons, inline UI, slide-deck icons, anywhere the full wordmark won&rsquo;t fit.</p>
 
     <div class="features-grid">
         <article class="feature-card">
-            <div style="background: #ffffff; border-radius: 10px; padding: 28px; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; min-height: 160px;">
-                <img src="/static/brand/mark.svg" alt="Videoscriber mark, colored" style="height: 120px; width: 120px;">
+            <div style="background: #ffffff; border-radius: 10px; padding: 28px; margin-bottom: 20px; display: flex; align-items: center; justify-content: center; min-height: 200px;">
+                <img src="/static/brand/mark.svg" alt="Videoscriber mark, colored" style="height: 140px; width: 140px;">
             </div>
             <h3>Colored</h3>
-            <p>Primary mark. Purple gradient + lavender caption lines.</p>
-            <div style="display:flex; gap:8px; flex-wrap: wrap;">
-                <a href="/static/brand/mark.svg" download class="btn-glass" style="font-size:13px; padding: 8px 14px;">SVG</a>
-                <a href="/static/brand/mark-512.png" download class="btn-glass" style="font-size:13px; padding: 8px 14px;">PNG 512</a>
-            </div>
+            <p>Primary mark. Purple gradient camera with lavender caption lines.</p>
+            {{ kit_dl('mark', 5) }}
         </article>
         <article class="feature-card">
-            <div style="background: #ffffff; border-radius: 10px; padding: 28px; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; min-height: 160px;">
-                <img src="/static/brand/mark-mono-black.svg" alt="Videoscriber mark, black" style="height: 120px; width: 120px;">
+            <div style="background: #ffffff; border-radius: 10px; padding: 28px; margin-bottom: 20px; display: flex; align-items: center; justify-content: center; min-height: 200px;">
+                <img src="/static/brand/mark-mono-black.svg" alt="Videoscriber mark, black" style="height: 140px; width: 140px;">
             </div>
             <h3>Mono black</h3>
             <p>Flat black. For light backgrounds or one-color embossing.</p>
-            <div style="display:flex; gap:8px; flex-wrap: wrap;">
-                <a href="/static/brand/mark-mono-black.svg" download class="btn-glass" style="font-size:13px; padding: 8px 14px;">SVG</a>
-                <a href="/static/brand/mark-mono-black-512.png" download class="btn-glass" style="font-size:13px; padding: 8px 14px;">PNG 512</a>
-            </div>
+            {{ kit_dl('mark-mono-black', 5) }}
         </article>
         <article class="feature-card">
-            <div style="background: #09090b; border-radius: 10px; padding: 28px; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; min-height: 160px;">
-                <img src="/static/brand/mark-mono-white.svg" alt="Videoscriber mark, white" style="height: 120px; width: 120px;">
+            <div style="background: #09090b; border-radius: 10px; padding: 28px; margin-bottom: 20px; display: flex; align-items: center; justify-content: center; min-height: 200px;">
+                <img src="/static/brand/mark-mono-white.svg" alt="Videoscriber mark, white" style="height: 140px; width: 140px;">
             </div>
             <h3>Mono white</h3>
             <p>For dark surfaces. Inverts the caption fill for contrast.</p>
-            <div style="display:flex; gap:8px; flex-wrap: wrap;">
-                <a href="/static/brand/mark-mono-white.svg" download class="btn-glass" style="font-size:13px; padding: 8px 14px;">SVG</a>
-                <a href="/static/brand/mark-mono-white-512.png" download class="btn-glass" style="font-size:13px; padding: 8px 14px;">PNG 512</a>
-            </div>
+            {{ kit_dl('mark-mono-white', 5) }}
         </article>
     </div>
 </section>
 
+{# ================================================================== AVATAR === #}
 <section class="section reveal">
-    <div class="section-kicker">Profile icon</div>
-    <h2 class="section-title">For avatars <span class="grad">and social tiles.</span></h2>
-    <p class="section-lead">A richer 1024&times;1024 version of the mark. Matches typical 1:1 profile picture slots on GitHub, LinkedIn, X, Slack, and Discord.</p>
+    <div class="section-kicker">Avatar</div>
+    <h2 class="section-title">For profiles <span class="grad">and app icons.</span></h2>
+    <p class="section-lead">A rounded-square version of the mark on our signature purple gradient. Drops into any 1:1 profile slot: GitHub, LinkedIn, X, Slack, Discord, App Store.</p>
 
-    <div class="features-grid">
+    <div class="features-grid" style="grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));">
         <article class="feature-card">
-            <div style="background: #ffffff; border-radius: 10px; padding: 16px; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; min-height: 220px;">
-                <img src="/static/brand/icon-profile-256.png?v=5" alt="Videoscriber profile icon" style="height: 192px; width: 192px; border-radius: 32px;">
+            <div style="background: #09090b; border-radius: 10px; padding: 24px; margin-bottom: 20px; display: flex; align-items: center; justify-content: center; min-height: 260px;">
+                <img src="/static/brand/avatar-512.png" alt="Videoscriber avatar" style="height: 208px; width: 208px; border-radius: 44px;">
             </div>
-            <h3>Full-bleed color</h3>
-            <p>Deep-purple gradient background with a central waveform. Looks like an app icon at any size.</p>
-            <div style="display:flex; gap:8px; flex-wrap: wrap;">
-                <a href="/static/brand/icon.svg" download class="btn-glass" style="font-size:13px; padding: 8px 14px;">SVG</a>
-                <a href="/static/brand/icon-profile-1024.png" download class="btn-glass" style="font-size:13px; padding: 8px 14px;">PNG 1024</a>
-                <a href="/static/brand/icon-profile-512.png" download class="btn-glass" style="font-size:13px; padding: 8px 14px;">PNG 512</a>
-                <a href="/static/brand/icon-profile-256.png" download class="btn-glass" style="font-size:13px; padding: 8px 14px;">PNG 256</a>
-            </div>
+            <h3>Purple gradient</h3>
+            <p>Signature purple gradient background with the mark centered. Use this as your default avatar everywhere.</p>
+            {{ kit_dl('avatar', 5) }}
         </article>
     </div>
 </section>
 
+{# ================================================================ WORDMARK === #}
 <section class="section reveal">
     <div class="section-kicker">Wordmark</div>
     <h2 class="section-title">Text only, <span class="grad">no icon.</span></h2>
@@ -131,42 +120,37 @@
 
     <div class="features-grid">
         <article class="feature-card">
-            <div style="background: #ffffff; border-radius: 10px; padding: 32px 20px; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; min-height: 120px;">
-                <img src="/static/brand/wordmark.svg" alt="Videoscriber wordmark, colored" style="max-height: 44px; width: auto;">
+            <div style="background: #ffffff; border-radius: 10px; padding: 32px 20px; margin-bottom: 20px; display: flex; align-items: center; justify-content: center; min-height: 140px;">
+                <img src="/static/brand/wordmark.svg" alt="Videoscriber wordmark, colored" style="max-height: 56px; max-width: 100%; height: auto;">
             </div>
             <h3>Colored</h3>
-            <p>Purple gradient. Pairs with the icon at the same gradient range.</p>
-            <div style="display:flex; gap:8px; flex-wrap: wrap;">
-                <a href="/static/brand/wordmark.svg" download class="btn-glass" style="font-size:13px; padding: 8px 14px;">SVG</a>
-            </div>
+            <p>Purple gradient. Pairs with the mark at the same gradient range.</p>
+            {{ kit_dl('wordmark', 4) }}
         </article>
         <article class="feature-card">
-            <div style="background: #ffffff; border-radius: 10px; padding: 32px 20px; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; min-height: 120px;">
-                <img src="/static/brand/wordmark-mono-black.svg" alt="Videoscriber wordmark, black" style="max-height: 44px; width: auto;">
+            <div style="background: #ffffff; border-radius: 10px; padding: 32px 20px; margin-bottom: 20px; display: flex; align-items: center; justify-content: center; min-height: 140px;">
+                <img src="/static/brand/wordmark-mono-black.svg" alt="Videoscriber wordmark, black" style="max-height: 56px; max-width: 100%; height: auto;">
             </div>
             <h3>Mono black</h3>
             <p>Solid black. For documents, legal footers, and print.</p>
-            <div style="display:flex; gap:8px; flex-wrap: wrap;">
-                <a href="/static/brand/wordmark-mono-black.svg" download class="btn-glass" style="font-size:13px; padding: 8px 14px;">SVG</a>
-            </div>
+            {{ kit_dl('wordmark-mono-black', 4) }}
         </article>
         <article class="feature-card">
-            <div style="background: #09090b; border-radius: 10px; padding: 32px 20px; margin-bottom: 16px; display: flex; align-items: center; justify-content: center; min-height: 120px;">
-                <img src="/static/brand/wordmark-mono-white.svg" alt="Videoscriber wordmark, white" style="max-height: 44px; width: auto;">
+            <div style="background: #09090b; border-radius: 10px; padding: 32px 20px; margin-bottom: 20px; display: flex; align-items: center; justify-content: center; min-height: 140px;">
+                <img src="/static/brand/wordmark-mono-white.svg" alt="Videoscriber wordmark, white" style="max-height: 56px; max-width: 100%; height: auto;">
             </div>
             <h3>Mono white</h3>
             <p>Solid white. For dark backgrounds and overlays.</p>
-            <div style="display:flex; gap:8px; flex-wrap: wrap;">
-                <a href="/static/brand/wordmark-mono-white.svg" download class="btn-glass" style="font-size:13px; padding: 8px 14px;">SVG</a>
-            </div>
+            {{ kit_dl('wordmark-mono-white', 4) }}
         </article>
     </div>
 </section>
 
+{# ==================================================== PALETTE + TYPOGRAPHY === #}
 <section class="section reveal">
     <div class="section-kicker">Typography &amp; color</div>
     <h2 class="section-title">The palette <span class="grad">and stack.</span></h2>
-    <p class="section-lead">For anyone rebuilding surfaces that need to feel consistent with the rest of Videoscriber.</p>
+    <p class="section-lead">For anyone rebuilding surfaces that need to feel consistent with Videoscriber.</p>
 
     <div class="audience-diptych">
         <article class="audience-panel dev">
