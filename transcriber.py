@@ -46,56 +46,110 @@ async def get_duration(file_path: Path) -> float:
     return float(info["format"]["duration"])
 
 
-async def enhance_video(input_path: Path, output_path: Path) -> bool:
-    """Enhance video quality using hardware-accelerated encoding on macOS."""
+async def _run_ffmpeg(args: list[str]) -> tuple[int, bytes]:
+    """Run ffmpeg. If we're cancelled, terminate the subprocess cleanly so it
+    doesn't keep running as an orphan and trashing its output file."""
+    proc = await asyncio.create_subprocess_exec(
+        *args,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        _, stderr = await proc.communicate()
+        return proc.returncode, stderr
+    except asyncio.CancelledError:
+        proc.terminate()
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=5)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+        raise
+
+
+async def enhance_video(input_path: Path, output_path: Path) -> tuple[bool, str | None]:
+    """Produce a web-optimized proxy: cap resolution at 1080p (keeping aspect
+    ratio), H.264 + faststart, enhanced with mild denoise/sharpen. Writes to a
+    .tmp path and atomically renames on success so an interrupted ffmpeg can
+    never leave a corrupt final file.
+
+    Returns (ok, error). On failure, `error` is the tail of ffmpeg stderr
+    (or the exception repr) so the caller can persist it for diagnosis.
+    """
+    tmp_path = output_path.with_suffix(output_path.suffix + ".tmp")
+    tmp_path.unlink(missing_ok=True)
     try:
         filtergraph = (
+            "scale='if(gt(iw,1920),1920,iw)':'if(gt(ih,1080),1080,ih)':"
+            "force_original_aspect_ratio=decrease:flags=lanczos,"
             "hqdn3d=3:2:3:2,"
             "unsharp=5:5:0.8:3:3:0.3,"
             "eq=brightness=0.03:contrast=1.03:saturation=1.08"
         )
 
-        # Try hardware-accelerated encoding first (Apple VideoToolbox — ~10-20x faster)
-        proc = await asyncio.create_subprocess_exec(
+        # Hardware-accelerated encoding first (Apple VideoToolbox — ~10-20x faster)
+        rc_hw, stderr_hw = await _run_ffmpeg([
             "ffmpeg", "-i", str(input_path),
             "-vf", filtergraph,
-            "-c:v", "h264_videotoolbox", "-q:v", "65",  # Hardware encoder, quality 0-100
-            "-c:a", "copy",
+            "-c:v", "h264_videotoolbox", "-q:v", "60",
+            "-c:a", "aac", "-b:a", "128k",
             "-movflags", "+faststart",
-            str(output_path), "-y",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        _, stderr = await proc.communicate()
+            "-pix_fmt", "yuv420p",
+            str(tmp_path), "-y",
+        ])
+        rc, stderr = rc_hw, stderr_hw
 
         # Fall back to software encoding if hardware fails
-        if proc.returncode != 0:
+        if rc_hw != 0:
             logger.info("Hardware encoding unavailable, falling back to software")
-            proc = await asyncio.create_subprocess_exec(
+            tmp_path.unlink(missing_ok=True)
+            rc_sw, stderr_sw = await _run_ffmpeg([
                 "ffmpeg", "-i", str(input_path),
                 "-vf", filtergraph,
-                "-c:v", "libx264", "-preset", "fast", "-crf", "20",
-                "-c:a", "copy",
+                "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+                "-maxrate", "4M", "-bufsize", "8M",
+                "-c:a", "aac", "-b:a", "128k",
                 "-movflags", "+faststart",
-                str(output_path), "-y",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            _, stderr = await proc.communicate()
+                "-pix_fmt", "yuv420p",
+                str(tmp_path), "-y",
+            ])
+            rc, stderr = rc_sw, stderr_sw
 
-        if proc.returncode != 0:
-            logger.warning("Video enhancement failed: %s", stderr.decode()[-500:])
-            return False
+        if rc != 0:
+            err = _format_ffmpeg_error(stderr, rc_hw, stderr_hw)
+            logger.warning("Video enhancement failed: %s", err[-500:])
+            tmp_path.unlink(missing_ok=True)
+            return False, err
 
-        if output_path.stat().st_size > 0:
-            return True
+        if tmp_path.exists() and tmp_path.stat().st_size > 0:
+            tmp_path.replace(output_path)
+            return True, None
         else:
-            output_path.unlink(missing_ok=True)
-            return False
+            tmp_path.unlink(missing_ok=True)
+            return False, "ffmpeg reported success but produced no output file"
 
+    except asyncio.CancelledError:
+        tmp_path.unlink(missing_ok=True)
+        raise
     except Exception as e:
         logger.warning("Video enhancement failed (non-fatal): %s", e)
-        return False
+        tmp_path.unlink(missing_ok=True)
+        return False, repr(e)
+
+
+def _format_ffmpeg_error(final_stderr: bytes, rc_hw: int, stderr_hw: bytes) -> str:
+    """Build a human-readable failure reason, preserving both attempts when the
+    software fallback also failed. Truncated to 2 KB so we never blow up the row."""
+    parts: list[str] = []
+    if rc_hw != 0 and stderr_hw is not final_stderr:
+        parts.append("[hardware (h264_videotoolbox)]")
+        parts.append(stderr_hw.decode(errors="replace").strip())
+        parts.append("\n[software (libx264)]")
+    parts.append(final_stderr.decode(errors="replace").strip())
+    text = "\n".join(parts)
+    if len(text) > 2048:
+        text = "…" + text[-2048:]
+    return text
 
 
 async def extract_audio(video_path: Path, output_path: Path) -> float:
@@ -161,15 +215,64 @@ def generate_srt(segments: list[dict]) -> str:
     return "\n".join(lines)
 
 
+MAX_CUE_CHARS = 70   # target per-cue width so captions stay on one line
+MAX_CUE_SECONDS = 4.0
+
+
+def _split_for_captions(text: str, max_chars: int = MAX_CUE_CHARS) -> list[str]:
+    """Break text into short word-aligned chunks for single-line caption display."""
+    words = text.strip().split()
+    if not words:
+        return []
+    chunks: list[str] = []
+    current: list[str] = []
+    current_len = 0
+    for word in words:
+        w = len(word) + (1 if current else 0)
+        if current_len + w > max_chars and current:
+            chunks.append(" ".join(current))
+            current = [word]
+            current_len = len(word)
+        else:
+            current.append(word)
+            current_len += w
+    if current:
+        chunks.append(" ".join(current))
+    return chunks
+
+
 def generate_vtt(segments: list[dict]) -> str:
+    """Produce WebVTT with short cues (~70 chars, ~4s max each) so that caption
+    display stays on a single line and never overtakes the video frame."""
     lines = ["WEBVTT", ""]
     for seg in segments:
-        start = format_timestamp_vtt(seg["start"])
-        end = format_timestamp_vtt(seg["end"])
+        seg_start = float(seg.get("start") or 0)
+        seg_end = float(seg.get("end") or seg_start)
+        duration = max(seg_end - seg_start, 0.001)
+        text = (seg.get("text") or "").strip()
+        if not text:
+            continue
         speaker_prefix = f"[{seg['speaker']}] " if seg.get("speaker") else ""
-        lines.append(f"{start} --> {end}")
-        lines.append(f"{speaker_prefix}{seg['text'].strip()}")
-        lines.append("")
+        chunks = _split_for_captions(text)
+        if not chunks:
+            continue
+        # Apportion duration proportionally by chunk length, clamped so each
+        # cue stays under MAX_CUE_SECONDS when possible.
+        total_chars = sum(len(c) for c in chunks)
+        t = seg_start
+        for i, chunk in enumerate(chunks):
+            share = len(chunk) / total_chars if total_chars else 1.0
+            raw = duration * share
+            chunk_dur = min(raw, MAX_CUE_SECONDS)
+            chunk_end = min(t + chunk_dur, seg_end) if i < len(chunks) - 1 else seg_end
+            if chunk_end <= t:
+                chunk_end = t + 0.01
+            prefix = speaker_prefix if i == 0 else ""
+            # Pin cues to the very bottom of the video frame
+            lines.append(f"{format_timestamp_vtt(t)} --> {format_timestamp_vtt(chunk_end)} line:88% position:50% align:middle")
+            lines.append(f"{prefix}{chunk}")
+            lines.append("")
+            t = chunk_end
     return "\n".join(lines)
 
 
@@ -259,29 +362,37 @@ async def generate_recap(plain_text: str, client: AsyncOpenAI) -> str:
                 "role": "system",
                 "content": (
                     "You are the ideal coworker — sharp, warm, and genuinely helpful. "
-                    "You write recap emails that people actually enjoy reading. "
-                    "Your tone is professional but human: a touch of wit when appropriate, "
-                    "always clear, never stuffy or robotic.\n\n"
+                    "You write recap emails that people actually enjoy reading. Your tone is "
+                    "professional but human: clear, concrete, never robotic or stuffy.\n\n"
                     "Given a meeting transcript, write a recap email in PLAIN TEXT (no markdown, "
-                    "no asterisks, no bold formatting — this will be pasted into an email client).\n\n"
-                    "Format:\n\n"
-                    "Subject: [One clear line suitable as an email subject]\n\n"
-                    "Hey team,\n\n"
-                    "[2-3 sentence summary that captures the vibe and substance of the meeting]\n\n"
-                    "KEY POINTS\n"
-                    "- [bullet points of main topics discussed]\n\n"
-                    "DECISIONS\n"
-                    "- [bullet points — omit this section entirely if no clear decisions were made]\n\n"
-                    "NEXT STEPS\n"
-                    "- [Owner]: [action item] — [deadline if mentioned]\n"
-                    "- [bullet points with names attached when identifiable]\n\n"
-                    "[Brief, friendly sign-off — keep it natural, like a real person wrote it]\n\n"
-                    "Rules:\n"
-                    "- Use real names from the transcript when you can identify them\n"
-                    "- No asterisks, no markdown, no bold/italic formatting\n"
-                    "- Use CAPS for section headers (KEY POINTS, DECISIONS, NEXT STEPS)\n"
-                    "- Keep it concise — respect people's inboxes\n"
-                    "- A touch of personality is welcome but don't force humor"
+                    "no asterisks, no bold formatting).\n\n"
+                    "STRUCTURE (in this order, but omit any section that has nothing real to say):\n"
+                    "  1. First line: Subject: <one clear, specific subject line>\n"
+                    "  2. Blank line, then a short greeting (e.g. 'Hey team,' or the attendees' "
+                    "first names if clearly identifiable)\n"
+                    "  3. Blank line, then 2–3 sentences summarising what actually happened — "
+                    "specific to this meeting, not a generic preamble\n"
+                    "  4. KEY POINTS — bullets of the main topics discussed\n"
+                    "  5. DECISIONS — bullets of decisions that were actually made (omit section "
+                    "if nothing was decided)\n"
+                    "  6. NEXT STEPS — bullets like 'Owner Name: action item — deadline'. Omit "
+                    "the section entirely if no action items came out of the meeting.\n\n"
+                    "QUALITY RULES — treat these as non-negotiable:\n"
+                    "- Absolutely no placeholders. Never emit '[Owner]', '[Your Name]', '[Action]', "
+                    "'[deadline if mentioned]', '[TBD]', 'TBD', 'N/A', 'Person X', '...', or any "
+                    "bracketed or ellipsis-shaped gap. If a fact is not in the transcript, omit the "
+                    "sentence or bullet entirely.\n"
+                    "- Use real names from the transcript. If a speaker is labelled 'Speaker A/B/C' "
+                    "with no real name mentioned, describe them by role (e.g. 'the engineering "
+                    "lead') or drop the attribution rather than writing 'Speaker A'.\n"
+                    "- Deadlines only when explicitly mentioned in the transcript. If no deadline "
+                    "was given, drop the '— deadline' part; do not write 'TBD' or 'deadline TBD'.\n"
+                    "- Section headers in UPPERCASE. No markdown, no asterisks, no bold/italic.\n"
+                    "- Tight and useful. Respect the reader's inbox.\n"
+                    "- End the body after your last real section. Do NOT write a sign-off, "
+                    "'Best,', 'Cheers,', 'Thanks,', a name, or any signature. A signature is "
+                    "appended separately. Your output must end on the last bullet / sentence of "
+                    "the last section you produced."
                 ),
             },
             {
@@ -296,6 +407,25 @@ async def generate_recap(plain_text: str, client: AsyncOpenAI) -> str:
 # ============================================================
 # Post-processing: speaker names + recap (runs after transcription)
 # ============================================================
+
+async def _tick_progress(job_id: str, start_pct: int, end_pct: int, estimated_s: float):
+    """Tick `progress` from start_pct -> (end_pct - 1) smoothly over `estimated_s`.
+    Runs until cancelled; intermediate per-batch updates will override as they land."""
+    import time as _time
+    started = _time.monotonic()
+    span = max(1, end_pct - 1 - start_pct)
+    try:
+        while True:
+            elapsed = _time.monotonic() - started
+            frac = min(elapsed / max(estimated_s, 1.0), 1.0)
+            pct = start_pct + int(frac * span)
+            if pct > end_pct - 1:
+                pct = end_pct - 1
+            await db.update_transcription(job_id, progress=pct)
+            await asyncio.sleep(1.5)
+    except asyncio.CancelledError:
+        pass
+
 
 async def post_process(job_id: str, all_segments: list[dict], plain_text: str,
                        video_path: Path | None = None):
@@ -348,17 +478,41 @@ async def post_process(job_id: str, all_segments: list[dict], plain_text: str,
     elif isinstance(enhance_res, Exception):
         logger.warning("Video enhancement crashed (non-fatal): %s", enhance_res)
         updates["enhancement_status"] = "failed"
+        updates["enhancement_error"] = repr(enhance_res)
         updates["video_path"] = str(video_path)
-    elif enhance_res:
-        enhanced_path = video_path.parent / f"{video_path.stem}_enhanced.mp4"
-        video_path.unlink(missing_ok=True)
-        updates["video_path"] = str(enhanced_path)
-        updates["enhancement_status"] = "ok"
     else:
-        updates["enhancement_status"] = "failed"
-        updates["video_path"] = str(video_path)
+        ok, reason = enhance_res
+        if ok:
+            enhanced_path = video_path.parent / f"{video_path.stem}_enhanced.mp4"
+            video_path.unlink(missing_ok=True)
+            updates["video_path"] = str(enhanced_path)
+            updates["enhancement_status"] = "ok"
+            updates["enhancement_error"] = None
+        else:
+            updates["enhancement_status"] = "failed"
+            updates["enhancement_error"] = reason
+            updates["video_path"] = str(video_path)
 
     await db.update_transcription(job_id, **updates)
+
+    # Index the transcript for the AI Assistant (non-fatal). Uses the final
+    # segments after speaker-id if available, otherwise the originals.
+    try:
+        final_segments_json = updates.get("transcript_segments_json")
+        if not final_segments_json:
+            final_segments_json = json.dumps(all_segments)
+        record = await db.get_transcription(job_id)
+        owner = record.get("user_id") if record else None
+        if owner:
+            from retrieval import embed_and_store_transcription
+            await embed_and_store_transcription(
+                transcription_id=job_id,
+                user_id=owner,
+                segments_json=final_segments_json,
+                transcript_text=updates.get("transcript_text") or plain_text,
+            )
+    except Exception as e:
+        logger.warning("AI indexing failed for %s (non-fatal): %s", job_id, e)
 
 
 async def _passthrough(val):
@@ -415,36 +569,42 @@ async def process_transcription(job_id: str, video_path: Path, audio_dir: Path, 
             job_id, total_chunks=total_chunks, completed_chunks=0,
         )
 
-        # Stage 3: Transcribe chunks in parallel (batches of 8)
+        # Stage 3: Transcribe chunks in parallel (batches of 8).
+        # Run a progress ticker alongside so single-chunk files (and the time
+        # between batch completions) don't stall at a fixed percentage.
         all_segments = []
         PARALLEL_BATCH = 8
         completed = 0
+        whisper_estimated_s = max(20.0, (duration or 60.0) * 0.20)
+        stage_tick = asyncio.create_task(_tick_progress(job_id, 15, 92, whisper_estimated_s))
+        try:
+            for batch_start in range(0, total_chunks, PARALLEL_BATCH):
+                batch = list(enumerate(chunks[batch_start:batch_start + PARALLEL_BATCH], start=batch_start))
 
-        for batch_start in range(0, total_chunks, PARALLEL_BATCH):
-            batch = list(enumerate(chunks[batch_start:batch_start + PARALLEL_BATCH], start=batch_start))
+                async def transcribe_chunk(idx, path):
+                    chunk_offset = idx * CHUNK_DURATION if total_chunks > 1 else 0
+                    result = await transcribe_file(client, path)
+                    segs = []
+                    for seg in result.get("segments", []):
+                        segs.append({
+                            "start": seg["start"] + chunk_offset,
+                            "end": seg["end"] + chunk_offset,
+                            "text": seg["text"],
+                        })
+                    return idx, segs
 
-            async def transcribe_chunk(idx, path):
-                chunk_offset = idx * CHUNK_DURATION if total_chunks > 1 else 0
-                result = await transcribe_file(client, path)
-                segs = []
-                for seg in result.get("segments", []):
-                    segs.append({
-                        "start": seg["start"] + chunk_offset,
-                        "end": seg["end"] + chunk_offset,
-                        "text": seg["text"],
-                    })
-                return idx, segs
+                results = await asyncio.gather(*(transcribe_chunk(idx, path) for idx, path in batch))
 
-            results = await asyncio.gather(*(transcribe_chunk(idx, path) for idx, path in batch))
+                for idx, segs in sorted(results, key=lambda x: x[0]):
+                    all_segments.extend(segs)
 
-            for idx, segs in sorted(results, key=lambda x: x[0]):
-                all_segments.extend(segs)
-
-            completed += len(batch)
-            progress = 15 + int(completed / total_chunks * 80)
-            await db.update_transcription(
-                job_id, progress=progress, completed_chunks=completed,
-            )
+                completed += len(batch)
+                progress = 15 + int(completed / total_chunks * 80)
+                await db.update_transcription(
+                    job_id, progress=progress, completed_chunks=completed,
+                )
+        finally:
+            stage_tick.cancel()
 
         # Stage 4: Generate output formats
         plain_text = " ".join(seg["text"].strip() for seg in all_segments)
@@ -510,13 +670,20 @@ async def process_transcription_assemblyai(
 
         config = aai.TranscriptionConfig(
             speaker_labels=True,
-            speech_model=aai.SpeechModel.best,
+            speech_models=[aai.SpeechModel.universal],
         )
         transcriber = aai.Transcriber()
 
-        transcript = await asyncio.to_thread(
-            transcriber.transcribe, str(audio_path), config=config
-        )
+        # Run the blocking transcribe call on a thread and tick progress smoothly
+        # until it finishes. Estimate ~25% of audio duration for the API.
+        estimated_s = max(30.0, (duration or 60.0) * 0.25)
+        tick_task = asyncio.create_task(_tick_progress(job_id, 15, 82, estimated_s))
+        try:
+            transcript = await asyncio.to_thread(
+                transcriber.transcribe, str(audio_path), config=config
+            )
+        finally:
+            tick_task.cancel()
 
         if transcript.status == aai.TranscriptStatus.error:
             raise RuntimeError(f"AssemblyAI error: {transcript.error}")

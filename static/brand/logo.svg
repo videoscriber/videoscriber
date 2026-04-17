@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 540 72" width="540" height="72">
+  <defs>
+    <linearGradient id="dCam" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#B794F6" />
+      <stop offset="50%" style="stop-color:#8B5CF6" />
+      <stop offset="100%" style="stop-color:#6D28D9" />
+    </linearGradient>
+    <linearGradient id="dLens" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#A78BFA" />
+      <stop offset="100%" style="stop-color:#7C3AED" />
+    </linearGradient>
+    <!-- Shared word + wave gradient: vertical white -> lavender, anchored in user-space
+         so the waveform bars read as one unified gradient rather than each fading independently. -->
+    <!-- Theme-agnostic gradient for the icon's caption lines (stays inside the
+         dark camera rect, so the white endpoint is fine here). -->
+    <linearGradient id="wordGrad" x1="0" y1="14" x2="0" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="100%" stop-color="#ddd6fe" />
+    </linearGradient>
+    <!-- Wordmark gradient stays inside the purple range so it reads on BOTH
+         light and dark page backgrounds. -->
+    <linearGradient id="wordGradText" x1="0" y1="12" x2="0" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#8b5cf6" />
+      <stop offset="100%" stop-color="#c4b5fd" />
+    </linearGradient>
+  </defs>
+
+  <!-- Icon: 44x44, nudged ~2px below geometric center for optical alignment with text x-height. -->
+  <g transform="translate(30, 39)">
+    <rect x="-21" y="-22" width="44" height="44" rx="10" ry="10" fill="url(#dCam)" />
+    <path d="M 20,-13 L 31,-19 Q 34,-20.4 34,-17 L 34,17 Q 34,20.4 31,19 L 20,13 Z" fill="url(#dLens)" />
+    <!-- Three horizontal "caption" bars of varying widths — simpler than a waveform, -->
+    <!-- evokes text lines / transcription. Single shared white->lavender gradient.   -->
+    <g>
+      <rect x="-14" y="-8"   width="24" height="3" rx="1.5" fill="url(#wordGrad)" opacity="0.9" />
+      <rect x="-14" y="-1.5" width="30" height="3" rx="1.5" fill="url(#wordGrad)" opacity="0.9" />
+      <rect x="-14" y="5"    width="18" height="3" rx="1.5" fill="url(#wordGrad)" opacity="0.9" />
+    </g>
+  </g>
+
+  <!-- Wordmark: Inter 700, lowercase, white→lavender gradient matching the icon's waveform. -->
+  <text x="74" y="59"
+        font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif"
+        font-size="64" font-weight="700" letter-spacing="-0.025em"
+        fill="url(#wordGradText)">videoscriber</text>
+</svg>

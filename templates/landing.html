@@ -1,0 +1,427 @@
+{% extends "_public_base.html" %}
+{% block title %}Videoscriber — AI transcription agents that always follow up{% endblock %}
+{% block meta_description %}Videoscriber is the AI meeting assistant for people who hate taking notes. Turn any recording into a transcript, draft a recap email, and send the follow-up — all in under a minute. Free to start, open-source desktop app available.{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="/static/landing.css">{% endblock %}
+{% block extra_head %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Videoscriber",
+  "applicationCategory": "BusinessApplication",
+  "operatingSystem": "Web, macOS, Windows, Linux",
+  "description": "Videoscriber turns any meeting recording into a transcript, drafts the recap email, and keeps every attendee aligned on next steps.",
+  "url": "https://videoscriber.ai/",
+  "image": "https://videoscriber.ai/static/brand/og-image.png",
+  "publisher": {
+    "@type": "Organization",
+    "name": "Videoscriber LLC",
+    "url": "https://videoscriber.ai/",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://videoscriber.ai/static/brand/icon.svg"
+    }
+  },
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD",
+    "availability": "https://schema.org/InStock",
+    "description": "Free tier with 3 transcriptions per month. Plus tier available via pay-per-token AI credits."
+  },
+  "featureList": [
+    "High-accuracy automated transcription",
+    "Speaker diarization",
+    "AI-drafted recap emails",
+    "One-click follow-up delivery",
+    "Open-source desktop application",
+    "Per-video AI assistant chat"
+  ]
+}
+</script>
+{% endblock %}
+{% block content %}
+<div class="landing">
+    <div class="ambient ambient-3" aria-hidden="true"></div>
+    <div class="ambient ambient-4" aria-hidden="true"></div>
+
+{# ================================================================= HERO === #}
+<section class="hero">
+    <div class="hero-chip">
+        <span class="chip-dot"></span>
+        <span>Now in beta &mdash;</span>
+        <a href="https://github.com/videoscriber/videoscriber" rel="noopener" target="_blank">Star us on GitHub &rarr;</a>
+    </div>
+    <h1 class="hero-title">AI transcription agents <span class="grad">that always follow up.</span></h1>
+    <p class="hero-lead">
+        Drop a recording. Videoscriber drafts the transcript, the recap, and the follow-up email
+        &mdash; so next steps land in writing before the meeting ends.
+    </p>
+    <div class="hero-cta">
+        <a href="/signup" class="btn-glow">
+            Get started for free
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+        </a>
+        <a href="#how-it-works" class="btn-glass">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            See it in action
+        </a>
+    </div>
+    <div class="hero-scroll">
+        <span>Scroll</span>
+        <div class="hero-scroll-line"></div>
+    </div>
+</section>
+
+{# ================================================================ STATS === #}
+<section class="stats reveal">
+    <div class="stats-grid">
+        <div class="stat">
+            <div class="stat-value">&lt; 1 min</div>
+            <div class="stat-label">From recording to signed recap</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value">90 days</div>
+            <div class="stat-label">Encrypted cloud backup retention</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value">MIT</div>
+            <div class="stat-label">Fully open-source desktop app</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value">0</div>
+            <div class="stat-label">Bytes used for model training</div>
+        </div>
+    </div>
+</section>
+
+{# ====================================================== PRODUCT PREVIEW === #}
+<section class="section">
+    <div class="preview">
+        <div class="preview-copy reveal">
+            <div class="section-kicker">The product</div>
+            <h2 class="section-title">Watch a meeting turn into <span class="grad">action items.</span></h2>
+            <p class="section-lead">Upload any recording. Videoscriber transcribes every speaker, distills what was said into a recap draft, and sends it to attendees in one click. The follow-up thread that usually dies now stays alive.</p>
+            <ul class="feature-list">
+                <li>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    <span>Whisper-grade transcription with optional speaker diarization</span>
+                </li>
+                <li>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    <span>Recap drafts structured as decisions, next steps, and owners</span>
+                </li>
+                <li>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    <span>Editable before any message sends &mdash; you stay in control</span>
+                </li>
+                <li>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    <span>Exports as plain text, SRT, VTT, or structured JSON</span>
+                </li>
+            </ul>
+        </div>
+
+        <div class="mockup reveal" data-delay="2" aria-hidden="true">
+            <div class="mockup-chrome">
+                <span class="mockup-dot r"></span>
+                <span class="mockup-dot y"></span>
+                <span class="mockup-dot g"></span>
+                <span class="mockup-filename">q3-planning-sync.mp4</span>
+            </div>
+            <div class="mockup-body">
+                <div class="mockup-wave">
+                    {% for i in range(40) %}<span class="bar" style="animation-delay: {{ (i * 0.03)|round(2) }}s; height: {{ 20 + (i * 37) % 60 }}%"></span>{% endfor %}
+                </div>
+                <div class="mockup-caption">
+                    <span class="mockup-caption-time">00:04</span>
+                    <span><span class="mockup-caption-speaker">Sarah:</span> Let's lock the launch date — Thursday the 25th works on our end.</span>
+                </div>
+                <div class="mockup-caption">
+                    <span class="mockup-caption-time">00:12</span>
+                    <span><span class="mockup-caption-speaker">Marco:</span> Agreed. I'll own the marketing comms, send me the brief by Monday.</span>
+                </div>
+                <div class="mockup-caption">
+                    <span class="mockup-caption-time">00:23</span>
+                    <span><span class="mockup-caption-speaker">Priya:</span> Engineering is ready once the API cutover completes.</span>
+                </div>
+                <div class="mockup-recap">
+                    <div class="mockup-recap-label">Recap draft &mdash; ready to send</div>
+                    <div class="mockup-recap-text">
+                        <strong>Decisions:</strong> Launch Thursday, Apr 25.<br>
+                        <strong>Next steps:</strong> Marco drafts comms by Monday. Priya finalizes API cutover.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+{# =============================================================== FEATURES === #}
+<section class="section reveal">
+    <div class="section-kicker">Capabilities</div>
+    <h2 class="section-title">Built on proven ingredients. <span class="grad">Nothing speculative.</span></h2>
+    <p class="section-lead">Every feature in Videoscriber ships on something real &mdash; no black-box promises, no smoke-and-mirror demos.</p>
+
+    <div class="features-grid">
+        <article class="feature-card" data-tilt>
+            <div class="feature-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+            </div>
+            <h3>Whisper-grade transcription</h3>
+            <p>Industry-leading accuracy across accents, terminology, and audio quality. Handles meetings, interviews, podcasts, lectures.</p>
+        </article>
+
+        <article class="feature-card" data-tilt>
+            <div class="feature-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="10" r="2.5"/><path d="M3 21v-1a6 6 0 0 1 12 0v1"/><path d="M15 21v-1a4 4 0 0 1 7-.6"/></svg>
+            </div>
+            <h3>Speaker diarization</h3>
+            <p>Optional AssemblyAI-powered diarization separates who said what. Labels flow through the transcript and recap automatically.</p>
+        </article>
+
+        <article class="feature-card" data-tilt>
+            <div class="feature-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
+            </div>
+            <h3>Structured recap drafts</h3>
+            <p>Not a summary &mdash; a follow-up. Every recap organizes decisions, next steps, and owners, ready to edit in seconds.</p>
+        </article>
+
+        <article class="feature-card" data-tilt>
+            <div class="feature-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg>
+            </div>
+            <h3>One-click follow-up email</h3>
+            <p>Send the recap to every attendee in a single click. Plus users ship from their own verified domain with their own signature.</p>
+        </article>
+
+        <article class="feature-card" data-tilt>
+            <div class="feature-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </div>
+            <h3>Privacy-first architecture</h3>
+            <p>HTTPS end-to-end, session-based auth, encrypted at-rest storage. Uploaded videos auto-delete after 90 days.</p>
+        </article>
+
+        <article class="feature-card" data-tilt>
+            <div class="feature-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            </div>
+            <h3>Fully open-source desktop app</h3>
+            <p>Bring your own OpenAI and AssemblyAI keys. Run it on your own machine with zero cloud dependency, or connect to the cloud for backup.</p>
+        </article>
+    </div>
+</section>
+
+{# =========================================================== HOW IT WORKS === #}
+<section id="how-it-works" class="section how-it-works reveal">
+    <div class="section-kicker">The flow</div>
+    <h2 class="section-title">Three steps. <span class="grad">Under a minute.</span></h2>
+    <p class="section-lead">Drop a recording, review the draft, send the follow-up. The agent handles the in-between so you can get back to real work.</p>
+
+    <div class="steps">
+        <article class="step reveal" data-delay="1">
+            <div class="step-num">01</div>
+            <h3>Drop the recording</h3>
+            <p>MP4, MOV, WAV, MKV &mdash; anything ffmpeg can read, up to 1&nbsp;GB per file. Audio or video, meeting or interview.</p>
+        </article>
+        <article class="step reveal" data-delay="2">
+            <div class="step-num">02</div>
+            <h3>AI drafts the recap</h3>
+            <p>Transcription runs first; the recap agent analyzes and drafts decisions, action items, and owners. Fully editable.</p>
+        </article>
+        <article class="step reveal" data-delay="3">
+            <div class="step-num">03</div>
+            <h3>Send the follow-up</h3>
+            <p>Review, adjust if needed, send to every attendee in one click. The thread stays alive and next steps are in writing.</p>
+        </article>
+    </div>
+</section>
+
+{# =============================================================== USE CASES === #}
+<section class="section reveal">
+    <div class="section-kicker">Who it's for</div>
+    <h2 class="section-title">Any recording that deserves <span class="grad">a real follow-up.</span></h2>
+    <p class="section-lead">Videoscriber adapts to any meeting format &mdash; from strategic planning to customer discovery to internal training.</p>
+
+    <div class="use-cases">
+        <div class="use-case">
+            <div class="use-case-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </div>
+            <h4>Team meetings</h4>
+            <p>Standups, planning sessions, retros &mdash; never lose the "what did we decide" thread.</p>
+        </div>
+        <div class="use-case">
+            <div class="use-case-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+            </div>
+            <h4>Sales calls</h4>
+            <p>Capture objections, commitments, and next-step timing. Pass it back to the prospect same-day.</p>
+        </div>
+        <div class="use-case">
+            <div class="use-case-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 11H3l2.5 12h13L21 11h-6"/><circle cx="12" cy="7" r="4"/></svg>
+            </div>
+            <h4>User interviews</h4>
+            <p>Turn every research session into a searchable transcript with speaker labels and quotable moments.</p>
+        </div>
+        <div class="use-case">
+            <div class="use-case-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+            </div>
+            <h4>Board reviews</h4>
+            <p>Produce decision logs attendees can sign off on without anyone having to take minutes.</p>
+        </div>
+    </div>
+</section>
+
+{# =========================================================== AUDIENCE DIPTYCH === #}
+<section class="section reveal">
+    <div class="section-kicker">Two ways in</div>
+    <h2 class="section-title">Run it yourself, <span class="grad">or let us run it for you.</span></h2>
+
+    <div class="audience-diptych">
+        <article class="audience-panel dev">
+            <div class="audience-label">Open source</div>
+            <h3>For the dev community</h3>
+            <p>The desktop app is fully open. Fork it, self-host it, extend it with your own transcription providers. Bring your own API keys, keep data on your machine, ship features we haven't built.</p>
+            <div class="code-block">
+<span class="prompt">$</span> git clone git@github.com:videoscriber/videoscriber
+<span class="prompt">$</span> cd videoscriber &amp;&amp; docker compose up --build
+<span class="cmt"># BYO keys. Local DB. No telemetry.</span>
+            </div>
+            <ul class="audience-list">
+                <li>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    <span>MIT-licensed FastAPI + Electron codebase</span>
+                </li>
+                <li>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    <span>Plug-in architecture for transcription providers</span>
+                </li>
+                <li>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    <span>Runs anywhere Docker does &mdash; laptop, VPS, air-gapped</span>
+                </li>
+            </ul>
+            <a href="https://github.com/videoscriber/videoscriber" rel="noopener" target="_blank" class="btn-glass">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.4.5 0 5.9 0 12.5c0 5.3 3.4 9.8 8.2 11.4.6.1.8-.3.8-.6v-2.1c-3.3.7-4-1.6-4-1.6-.5-1.4-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.7-.3-5.5-1.3-5.5-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11 11 0 0 1 6 0C17 4.1 18 4.4 18 4.4c.6 1.7.2 2.9.1 3.2.8.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.5 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6 4.8-1.6 8.2-6.1 8.2-11.4C24 5.9 18.6.5 12 .5z"/></svg>
+                View on GitHub
+            </a>
+        </article>
+
+        <article class="audience-panel ent">
+            <div class="audience-label">Managed cloud</div>
+            <h3>For the enterprise</h3>
+            <p>Focused productivity that drops into existing workflows &mdash; no vendor switch, no platform migration. Built on the same codebase, hosted by us, with the compliance guarantees your team actually needs.</p>
+            <ul class="audience-list">
+                <li>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    <span>90-day encrypted cloud backup, HTTPS end-to-end</span>
+                </li>
+                <li>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    <span>Zero training on customer content &mdash; contractually</span>
+                </li>
+                <li>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    <span>SMS-verified, session-based auth with rate-limited sign-in</span>
+                </li>
+                <li>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    <span>Managed uptime and dedicated support channels</span>
+                </li>
+            </ul>
+            <a href="/signup" class="btn-glow">
+                Create an account
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+            </a>
+        </article>
+    </div>
+</section>
+
+{# ==================================================================== FAQ === #}
+<section class="section faq reveal">
+    <div class="section-kicker">Questions &amp; answers</div>
+    <h2 class="section-title">Things people ask <span class="grad">before signing up.</span></h2>
+    <p class="section-lead">The short version. For anything deeper, email <a href="mailto:hello@videoscriber.ai" style="color: var(--purple-light);">hello@videoscriber.ai</a>.</p>
+
+    <div class="faq-list">
+        <details class="faq-item">
+            <summary>Do you train AI models on my content?</summary>
+            <div class="faq-body">No. We never use your uploaded audio, video, transcripts, or recaps to train any model &mdash; ours or anyone else's. Our sub-processor agreements with OpenAI and AssemblyAI are zero-retention for the API traffic we send. This is in the Privacy Policy as a contractual commitment, not just a promise.</div>
+        </details>
+        <details class="faq-item">
+            <summary>How long do you keep my uploads?</summary>
+            <div class="faq-body">Raw uploaded video and audio files are automatically deleted 90 days after upload. Transcripts, recaps, and metadata are retained until you delete them or close your account. You can export and delete any content at any time from inside the app.</div>
+        </details>
+        <details class="faq-item">
+            <summary>What happens if I self-host the desktop app?</summary>
+            <div class="faq-body">The open-source desktop app works standalone with no cloud dependency. You bring your own OpenAI and AssemblyAI keys, and all transcripts stay on your machine. You can optionally "Connect to Cloud" to enable backup and our managed processing, but it's off by default.</div>
+        </details>
+        <details class="faq-item">
+            <summary>Does it work in languages other than English?</summary>
+            <div class="faq-body">Transcription supports every language OpenAI Whisper supports (roughly 50 languages with varying quality). Recap drafting currently targets English best. If you need primary support for a specific language, we'd love to hear about it.</div>
+        </details>
+        <details class="faq-item">
+            <summary>How does pricing work?</summary>
+            <div class="faq-body">The cloud app is free to start while we're in beta. We'll publish clear pricing before we leave beta &mdash; expect per-minute transcription pricing with a generous free tier and no per-seat fees. The open-source desktop app is and will always be free.</div>
+        </details>
+        <details class="faq-item">
+            <summary>Is there a minimum recording length?</summary>
+            <div class="faq-body">No minimum. Videoscriber handles clips from a few seconds (hallway conversations, voice memos) up to 1&nbsp;GB per file (roughly 8&nbsp;hours of audio or 90&nbsp;minutes of 1080p video).</div>
+        </details>
+        <details class="faq-item">
+            <summary>Can I integrate it with my existing tools?</summary>
+            <div class="faq-body">The cloud app exposes a clean REST API for fetching transcripts and recaps. The desktop app has a plug-in architecture for custom providers and post-processing steps. Webhooks and direct integrations are on the roadmap.</div>
+        </details>
+    </div>
+</section>
+
+{# ============================================================== FINAL CTA === #}
+<section class="final-cta reveal">
+    <h2>Stop taking notes.<br><span style="background: linear-gradient(180deg, #ffffff 0%, var(--purple-light) 100%); -webkit-background-clip: text; background-clip: text; color: transparent;">Start finishing meetings.</span></h2>
+    <p>Create a free account and upload your first recording in the next two minutes. No credit card, no commitment.</p>
+    <a href="/signup" class="btn-glow">
+        Create your account
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+    </a>
+    <div class="final-cta-note">US phone verification &middot; Free during beta &middot; Cancel anytime</div>
+</section>
+
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+// Scroll-triggered reveal
+(() => {
+    const targets = document.querySelectorAll('.reveal');
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce || !('IntersectionObserver' in window)) {
+        targets.forEach(el => el.classList.add('in'));
+        return;
+    }
+    const io = new IntersectionObserver((entries) => {
+        for (const e of entries) {
+            if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+        }
+    }, { rootMargin: '0px 0px -10% 0px', threshold: 0.12 });
+    targets.forEach(el => io.observe(el));
+})();
+
+// Feature card cursor-follow glow (pointer position → CSS vars)
+(() => {
+    const cards = document.querySelectorAll('[data-tilt]');
+    if (window.matchMedia('(hover: none)').matches) return;
+    cards.forEach(card => {
+        card.addEventListener('pointermove', (e) => {
+            const r = card.getBoundingClientRect();
+            card.style.setProperty('--mx', ((e.clientX - r.left) / r.width * 100) + '%');
+            card.style.setProperty('--my', ((e.clientY - r.top) / r.height * 100) + '%');
+        });
+    });
+})();
+</script>
+{% endblock %}

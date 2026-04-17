@@ -135,7 +135,7 @@ Upload → Extract Audio (ffmpeg) → Chunk if >25MB → Transcribe (Whisper/Ass
 |--------|------|-------------|
 | `POST` | `/api/transcriptions/{id}/recap` | Generate or retrieve cached recap. Query param: `regenerate=true` |
 | `GET` | `/api/search?q=term` | Search across all transcripts (min 2 chars) |
-| `POST` | `/api/send-email` | Send recap via SMTP. Form fields: `to`, `subject`, `body` |
+| `POST` | `/api/send-email` | Send recap via Resend. Form fields: `to`, `subject`, `body` |
 
 ### Cloud Sync
 
@@ -153,11 +153,8 @@ All configuration is via environment variables (`.env` file):
 |----------|----------|---------|-------------|
 | `OPENAI_API_KEY` | Yes | — | OpenAI API key (Whisper + GPT) |
 | `ASSEMBLYAI_API_KEY` | No | — | Enables speaker diarization |
-| `SMTP_HOST` | No | — | SMTP server for email sending |
-| `SMTP_PORT` | No | `587` | SMTP port |
-| `SMTP_USER` | No | — | SMTP login |
-| `SMTP_PASS` | No | — | SMTP password |
-| `SMTP_FROM` | No | `SMTP_USER` | From address |
+| `RESEND_API_KEY` | No | — | Resend key; powers OTP + recap email + custom-domain sending |
+| `RESEND_FROM` | No | `VideoScriber <auth@videoscriber.ai>` | Default From address for outbound mail |
 | `SYNC_KEY` | No | — | Shared secret for cloud sync |
 | `HOST` | No | `127.0.0.1` | Bind address |
 | `PORT` | No | `8000` | Bind port |

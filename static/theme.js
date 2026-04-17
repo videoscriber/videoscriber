@@ -1,7 +1,7 @@
 export function initTheme() {
+  // Always default to dark. Only honor a saved preference from a previous visit.
   const saved = localStorage.getItem('theme');
-  const preferred = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-  applyTheme(saved || preferred);
+  applyTheme(saved || 'dark');
 }
 
 export function toggleTheme() {

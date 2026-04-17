@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Videoscriber — AI transcription agents that always follow up{% endblock %}</title>
+    <script>
+      // Apply theme before styles load to avoid flash. Default: dark.
+      (() => {
+        const saved = localStorage.getItem('theme');
+        document.documentElement.setAttribute('data-theme', saved || 'dark');
+      })();
+    </script>
+
+    {# === SEO ============================================================ #}
+    {% set default_description = "Videoscriber is the AI meeting assistant for people who hate taking notes. Turn any recording into a transcript, draft a recap email, and send the follow-up in under a minute — so every meeting stays aligned on next steps." %}
+    {% set og_url = "https://videoscriber.ai" + (request.url.path if request is defined and request else "/") %}
+    {% set og_image = "https://videoscriber.ai/static/brand/og-image.png?v=1" %}
+    <meta name="description" content="{% block meta_description %}{{ default_description }}{% endblock %}">
+    <meta name="keywords" content="{% block meta_keywords %}AI meeting transcription, meeting recap, meeting notes, video transcription, meeting summary, AI follow-up email, speaker diarization, Zoom recording transcription{% endblock %}">
+    <meta name="author" content="Videoscriber LLC">
+    <meta name="robots" content="{% block meta_robots %}index, follow{% endblock %}">
+    <link rel="canonical" href="{% block canonical %}{{ og_url }}{% endblock %}">
+
+    {# === Open Graph ===================================================== #}
+    <meta property="og:type" content="{% block og_type %}website{% endblock %}">
+    <meta property="og:site_name" content="Videoscriber">
+    <meta property="og:url" content="{{ og_url }}">
+    <meta property="og:title" content="{% block og_title %}{{ self.title() }}{% endblock %}">
+    <meta property="og:description" content="{% block og_description %}{{ self.meta_description() }}{% endblock %}">
+    <meta property="og:image" content="{% block og_image %}{{ og_image }}{% endblock %}">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="Videoscriber — AI transcription agents that always follow up">
+    <meta property="og:locale" content="en_US">
+
+    {# === Twitter / X ==================================================== #}
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{% block twitter_title %}{{ self.title() }}{% endblock %}">
+    <meta name="twitter:description" content="{% block twitter_description %}{{ self.meta_description() }}{% endblock %}">
+    <meta name="twitter:image" content="{% block twitter_image %}{{ og_image }}{% endblock %}">
+    <meta name="twitter:image:alt" content="Videoscriber — AI transcription agents that always follow up">
+
+    <meta name="theme-color" content="#09090b">
+    {% block extra_head %}{% endblock %}
+    <link rel="icon" type="image/svg+xml" href="/static/brand/icon.svg">
+    <link rel="icon" type="image/png" href="/static/brand/favicon.png">
+    <link rel="apple-touch-icon" href="/static/brand/apple-touch-icon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/public.css">
+    {% block extra_css %}{% endblock %}
+</head>
+<body class="public-body">
+    <header class="public-header">
+        <a href="/" class="public-brand" aria-label="Videoscriber home">
+            <img src="/static/brand/logo.svg?v=4" alt="Videoscriber" class="brand-logo">
+        </a>
+        <nav class="public-nav">
+            <button type="button" class="public-theme-toggle" id="public-theme-toggle" aria-label="Toggle theme" title="Toggle theme">
+                <svg class="theme-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+                <svg class="theme-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            </button>
+            {% block nav %}
+            <a href="/login" class="nav-link">Log in</a>
+            <a href="/signup" class="nav-cta">Get started</a>
+            {% endblock %}
+        </nav>
+    </header>
+    <main class="public-main">{% block content %}{% endblock %}</main>
+    <footer class="public-footer">
+        <div class="public-footer-inner">
+            <div class="public-footer-brand">
+                <img src="/static/brand/logo.svg?v=4" alt="Videoscriber" class="brand-logo">
+                <span class="muted">&copy; 2026 Videoscriber LLC</span>
+            </div>
+            <nav class="public-footer-links">
+                <a href="/terms">Terms</a>
+                <a href="/privacy">Privacy</a>
+                <a href="https://github.com/videoscriber/videoscriber" rel="noopener" target="_blank">GitHub</a>
+                <a href="mailto:legal@videoscriber.ai">Contact</a>
+            </nav>
+        </div>
+    </footer>
+    <script>
+      (() => {
+        const btn = document.getElementById('public-theme-toggle');
+        if (!btn) return;
+        btn.addEventListener('click', () => {
+          const cur = document.documentElement.getAttribute('data-theme') || 'dark';
+          const next = cur === 'dark' ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', next);
+          localStorage.setItem('theme', next);
+        });
+      })();
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

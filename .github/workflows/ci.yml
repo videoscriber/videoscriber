@@ -76,14 +76,14 @@ jobs:
             videoscriber:test
 
           for i in $(seq 1 30); do
-            if curl -sf http://localhost:8000/api/config > /dev/null 2>&1; then
+            if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
               echo "Container is healthy"
               break
             fi
             sleep 1
           done
 
-          curl -sf http://localhost:8000/api/config | grep -q "diarization_available"
+          curl -sf http://localhost:8000/health | grep -q '"ok"'
           echo "Docker test passed"
 
           docker stop test-container

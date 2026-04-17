@@ -5,21 +5,29 @@ import re
 import shutil
 import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote
 
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-from starlette.requests import Request
 
-import database as db
-from transcriber import process_transcription
-
+# Load .env BEFORE importing our own modules — several of them read env vars
+# at import time (e.g. auth_routes.AUTH_MODE, sms/email service flags).
 load_dotenv()
+
+from fastapi import Depends, FastAPI, Form, HTTPException, UploadFile  # noqa: E402
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+from fastapi.templating import Jinja2Templates  # noqa: E402
+from starlette.requests import Request  # noqa: E402
+
+import auth  # noqa: E402
+import auth_routes  # noqa: E402
+import chat_routes  # noqa: E402
+import database as db  # noqa: E402
+import domain_routes  # noqa: E402
+from transcriber import process_transcription  # noqa: E402
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "1000"))
@@ -39,6 +47,71 @@ VIDEO_PREVIEW_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
 MAX_FILENAME_LEN = 255
 MAX_EMAIL_SUBJECT_LEN = 200
 MAX_EMAIL_BODY_LEN = 100_000
+
+# Freemium plan limits (cloud only; desktop is unmetered)
+FREE_MAX_FILE_MB = int(os.getenv("FREE_MAX_FILE_MB", "250"))
+FREE_MONTHLY_LIMIT = int(os.getenv("FREE_MONTHLY_LIMIT", "3"))
+PLUS_MAX_FILE_MB = int(os.getenv("PLUS_MAX_FILE_MB", "1024"))
+USAGE_WINDOW_DAYS = 30
+# Free-tier transcripts are deleted after this many days
+FREE_RETENTION_DAYS = int(os.getenv("FREE_RETENTION_DAYS", "10"))
+
+
+def _plan_limits(plan: str) -> dict:
+    if plan == "plus":
+        return {"max_file_mb": PLUS_MAX_FILE_MB, "monthly_limit": None}
+    return {"max_file_mb": FREE_MAX_FILE_MB, "monthly_limit": FREE_MONTHLY_LIMIT}
+
+
+async def _usage_count(user_id: str) -> int:
+    since = (datetime.now(timezone.utc) - timedelta(days=USAGE_WINDOW_DAYS)).isoformat()
+    return await db.count_transcriptions_since(user_id, since)
+
+
+def _require_owner(record: dict | None, user: dict) -> dict:
+    """404 if record is missing or doesn't belong to the user."""
+    if not record or record.get("user_id") != user["user_id"]:
+        raise HTTPException(404, "Transcription not found")
+    return record
+
+
+# Track in-flight transcription tasks so graceful shutdown can wait on them.
+_inflight_transcriptions: set[asyncio.Task] = set()
+
+
+def _track_transcription(task: asyncio.Task) -> None:
+    _inflight_transcriptions.add(task)
+    task.add_done_callback(_inflight_transcriptions.discard)
+
+
+async def _sweep_free_tier_retention() -> int:
+    """Delete free-plan transcriptions older than FREE_RETENTION_DAYS.
+    Also cleans up stored video files. Returns the number deleted."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=FREE_RETENTION_DAYS)).isoformat()
+    stale = await db.find_free_transcriptions_older_than(cutoff)
+    if not stale:
+        return 0
+    for row in stale:
+        vp = row.get("video_path")
+        if vp:
+            try:
+                Path(vp).unlink(missing_ok=True)
+            except Exception as e:
+                logger.warning("Retention: failed to unlink %s: %s", vp, e)
+    await db.delete_transcriptions_bulk([row["id"] for row in stale])
+    logger.info("Retention sweep: deleted %d free-tier transcriptions older than %d days",
+                len(stale), FREE_RETENTION_DAYS)
+    return len(stale)
+
+
+async def _retention_loop() -> None:
+    """Run the retention sweep hourly while the app is alive."""
+    while True:
+        try:
+            await _sweep_free_tier_retention()
+        except Exception as e:
+            logger.warning("Retention sweep failed: %s", e)
+        await asyncio.sleep(3600)
 
 _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
@@ -81,8 +154,37 @@ async def lifespan(app: FastAPI):
 
     await db.init_db()
     await _cleanup_orphans()
+    # Run retention sweep immediately, then hourly in background
+    try:
+        await _sweep_free_tier_retention()
+    except Exception as e:
+        logger.warning("Initial retention sweep failed: %s", e)
+    retention_task = asyncio.create_task(_retention_loop())
     logger.info("Videoscriber ready at http://%s:%s", HOST, PORT)
-    yield
+    try:
+        yield
+    finally:
+        # Graceful shutdown: give in-flight transcriptions up to GRACEFUL_SHUTDOWN_S
+        # to finish (so ffmpeg finalises its moov atom and atomic renames land).
+        # Anything still running after that is cancelled; startup recovery + the
+        # atomic-write rename in enhance_video handle the leftovers safely.
+        graceful_s = int(os.getenv("GRACEFUL_SHUTDOWN_S", "60"))
+        if _inflight_transcriptions and graceful_s > 0:
+            pending = list(_inflight_transcriptions)
+            logger.info("Waiting up to %ds for %d in-flight transcription(s)...",
+                        graceful_s, len(pending))
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*pending, return_exceptions=True),
+                    timeout=graceful_s,
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Graceful deadline hit; cancelling %d job(s)",
+                               len(_inflight_transcriptions))
+                for t in list(_inflight_transcriptions):
+                    t.cancel()
+                await asyncio.gather(*_inflight_transcriptions, return_exceptions=True)
+        retention_task.cancel()
 
 
 def _upload_job_id(path: Path) -> str:
@@ -161,18 +263,146 @@ async def _cleanup_orphans() -> None:
 app = FastAPI(lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+app.include_router(auth_routes.router)
+app.include_router(chat_routes.router)
+app.include_router(domain_routes.router)
+
+
+@app.middleware("http")
+async def gate_api_behind_session(request: Request, call_next):
+    """Require a valid session for /api/* routes. /api/sync/* uses its own key auth."""
+    path = request.url.path
+    if path.startswith("/api/") and not path.startswith("/api/sync"):
+        user = await auth.current_user(request)
+        if not user:
+            return JSONResponse({"error": "Authentication required"}, status_code=401)
+    return await call_next(request)
 
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
-    return templates.TemplateResponse(request, "index.html")
+async def landing(request: Request):
+    user = await auth.current_user(request)
+    if user:
+        return RedirectResponse("/app", status_code=303)
+    return templates.TemplateResponse(request, "landing.html")
+
+
+@app.get("/app", response_class=HTMLResponse)
+async def app_home(request: Request):
+    user = await auth.current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    if not user.get("profile_completed_at"):
+        return RedirectResponse("/signup/profile", status_code=303)
+    plan = user.get("plan") or "free"
+    limits = _plan_limits(plan)
+    used = await _usage_count(user["user_id"])
+    return templates.TemplateResponse(request, "index.html", {
+        "user": user,
+        "plan": plan,
+        "plan_limits": limits,
+        "plan_used": used,
+    })
+
+
+@app.get("/app/settings", response_class=HTMLResponse)
+async def settings_page(request: Request):
+    user = await auth.current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    if not user.get("profile_completed_at"):
+        return RedirectResponse("/signup/profile", status_code=303)
+    return templates.TemplateResponse(request, "settings.html", {"user": user})
+
+
+@app.get("/upgrade", response_class=HTMLResponse)
+async def upgrade_page(request: Request):
+    user = await auth.current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    plan = user.get("plan") or "free"
+    limits = _plan_limits(plan)
+    return templates.TemplateResponse(request, "upgrade.html", {
+        "user": user,
+        "plan": plan,
+        "limits": limits,
+        "free_max_file_mb": FREE_MAX_FILE_MB,
+        "plus_max_file_mb": PLUS_MAX_FILE_MB,
+        "free_monthly_limit": FREE_MONTHLY_LIMIT,
+    })
+
+
+@app.get("/terms", response_class=HTMLResponse)
+async def terms_page(request: Request):
+    return templates.TemplateResponse(request, "legal/terms.html")
+
+
+@app.get("/privacy", response_class=HTMLResponse)
+async def privacy_page(request: Request):
+    return templates.TemplateResponse(request, "legal/privacy.html")
+
+
+@app.get("/health")
+async def health():
+    return {"ok": True}
+
+
+@app.get("/robots.txt")
+async def robots_txt():
+    body = (
+        "User-agent: *\n"
+        "Allow: /\n"
+        "Disallow: /app\n"
+        "Disallow: /app/\n"
+        "Disallow: /api/\n"
+        "Disallow: /auth/\n"
+        "Disallow: /signup/profile\n"
+        "Sitemap: https://videoscriber.ai/sitemap.xml\n"
+    )
+    return PlainTextResponse(body, media_type="text/plain")
+
+
+@app.get("/sitemap.xml")
+async def sitemap_xml():
+    urls = ["/", "/signup", "/login", "/terms", "/privacy", "/upgrade"]
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    entries = "".join(
+        f"  <url><loc>https://videoscriber.ai{u}</loc><lastmod>{now}</lastmod>"
+        f"<changefreq>{'weekly' if u == '/' else 'monthly'}</changefreq>"
+        f"<priority>{'1.0' if u == '/' else '0.6'}</priority></url>\n"
+        for u in urls
+    )
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        f"{entries}"
+        "</urlset>\n"
+    )
+    return Response(content=body, media_type="application/xml")
 
 
 @app.get("/api/config")
-async def get_config():
+async def get_config(user: dict = Depends(auth.require_user)):
+    plan = user.get("plan") or "free"
+    limits = _plan_limits(plan)
+    used = await _usage_count(user["user_id"])
     return {
         "diarization_available": bool(os.getenv("ASSEMBLYAI_API_KEY")),
         "max_concurrent_jobs": MAX_CONCURRENT_JOBS,
+        "user": {
+            "id": user["user_id"],
+            "full_name": user.get("full_name"),
+            "email": user.get("email"),
+            "phone": user.get("phone"),
+        },
+        "plan": {
+            "tier": plan,
+            "max_file_mb": limits["max_file_mb"],
+            "monthly_limit": limits["monthly_limit"],
+            "used_this_month": used,
+            "remaining": None if limits["monthly_limit"] is None else max(0, limits["monthly_limit"] - used),
+            "window_days": USAGE_WINDOW_DAYS,
+        },
     }
 
 
@@ -187,8 +417,17 @@ async def get_queue():
 
 
 @app.post("/api/upload")
-async def upload_video(files: list[UploadFile], diarize: str = Form(default="false")):
+async def upload_video(
+    files: list[UploadFile],
+    diarize: str = Form(default="false"),
+    user: dict = Depends(auth.require_user),
+):
     use_diarize = diarize.lower() == "true"
+    plan = user.get("plan") or "free"
+    limits = _plan_limits(plan)
+    max_bytes = limits["max_file_mb"] * 1024 * 1024
+    window_since_iso = (datetime.now(timezone.utc) - timedelta(days=USAGE_WINDOW_DAYS)).isoformat()
+
     results = []
     for file in files:
         if not file.filename:
@@ -204,13 +443,33 @@ async def upload_video(files: list[UploadFile], diarize: str = Form(default="fal
         with open(save_path, "wb") as f:
             while chunk := await file.read(1024 * 1024):
                 size += len(chunk)
-                if size > MAX_UPLOAD_MB * 1024 * 1024:
+                if size > max_bytes:
                     save_path.unlink(missing_ok=True)
-                    raise HTTPException(413, f"File too large. Maximum size is {MAX_UPLOAD_MB}MB")
+                    raise HTTPException(
+                        413,
+                        f"File too large. Your {plan} plan allows up to {limits['max_file_mb']}MB per file."
+                        + (" Upgrade for larger files." if plan == "free" else ""),
+                    )
                 f.write(chunk)
 
-        await db.create_transcription(job_id, file.filename, size)
-        asyncio.create_task(_run_with_semaphore(job_id, save_path, use_diarize))
+        # Atomic limit check + insert — serializes across parallel uploads
+        reserved = await db.try_create_transcription_atomic(
+            job_id,
+            user["user_id"],
+            file.filename,
+            size,
+            limits["monthly_limit"],
+            window_since_iso if limits["monthly_limit"] is not None else None,
+        )
+        if not reserved:
+            save_path.unlink(missing_ok=True)
+            raise HTTPException(
+                402,
+                f"Free plan allows {limits['monthly_limit']} transcriptions per {USAGE_WINDOW_DAYS} days. "
+                f"Upgrade to remove the limit.",
+            )
+
+        _track_transcription(asyncio.create_task(_run_with_semaphore(job_id, save_path, use_diarize)))
         results.append({"id": job_id, "status": "pending"})
 
     return results
@@ -222,32 +481,97 @@ async def _run_with_semaphore(job_id: str, video_path: Path, diarize: bool = Fal
 
 
 @app.get("/api/transcriptions")
-async def list_transcriptions():
-    return await db.list_transcriptions()
+async def list_transcriptions(user: dict = Depends(auth.require_user)):
+    return await db.list_transcriptions(user["user_id"])
 
 
 @app.get("/api/transcriptions/{job_id}")
-async def get_transcription(job_id: str):
-    record = await db.get_transcription(job_id)
-    if not record:
-        raise HTTPException(404, "Transcription not found")
+async def get_transcription(job_id: str, user: dict = Depends(auth.require_user)):
+    record = _require_owner(await db.get_transcription(job_id), user)
     return record
 
 
 @app.get("/api/transcriptions/{job_id}/download/{fmt}")
-async def download_transcription(job_id: str, fmt: str):
-    if fmt not in ("txt", "srt", "vtt"):
-        raise HTTPException(400, "Format must be txt, srt, or vtt")
+async def download_transcription(job_id: str, fmt: str, user: dict = Depends(auth.require_user)):
+    if fmt not in ("txt", "srt", "vtt", "pdf"):
+        raise HTTPException(400, "Format must be txt, srt, vtt, or pdf")
 
-    record = await db.get_transcription(job_id)
-    if not record:
-        raise HTTPException(404, "Transcription not found")
+    record = _require_owner(await db.get_transcription(job_id), user)
     if record["status"] != "done":
         raise HTTPException(400, "Transcription not complete")
 
+    stem = _safe_filename(Path(record["filename"]).stem) or "transcript"
+
+    # --- PDF: Plus-only ---
+    if fmt == "pdf":
+        if (user.get("plan") or "free") != "plus":
+            raise HTTPException(402, "PDF export is a Plus feature. Upgrade to unlock.")
+        from weasyprint import HTML as _HTML, CSS as _CSS  # noqa: F401
+        import json as _json
+        from datetime import datetime as _dt
+
+        # Build the segment rows with timestamps + speaker colors
+        palette = ["#8b5cf6", "#6366f1", "#14b8a6", "#f59e0b", "#ef4444",
+                   "#ec4899", "#10b981", "#f97316"]
+        segments_raw = _json.loads(record.get("transcript_segments_json") or "[]")
+        speaker_to_color: dict[str, str] = {}
+        rows = []
+        for seg in segments_raw:
+            spk = seg.get("speaker") or ""
+            if spk and spk not in speaker_to_color:
+                speaker_to_color[spk] = palette[len(speaker_to_color) % len(palette)]
+            total = int(seg.get("start") or 0)
+            hh = total // 3600
+            mm = (total % 3600) // 60
+            ss = total % 60
+            ts = f"{hh:02d}:{mm:02d}:{ss:02d}" if hh else f"{mm:02d}:{ss:02d}"
+            rows.append({
+                "ts": ts,
+                "speaker": spk,
+                "speaker_color": speaker_to_color.get(spk),
+                "text": (seg.get("text") or "").strip(),
+            })
+
+        speaker_chips = [{"name": name, "color": color}
+                          for name, color in speaker_to_color.items()]
+
+        duration_label = None
+        if record.get("duration_seconds"):
+            ds = int(record["duration_seconds"])
+            if ds >= 3600:
+                duration_label = f"{ds // 3600}h {(ds % 3600) // 60}m"
+            else:
+                duration_label = f"{ds // 60}m {ds % 60}s"
+
+        created_label = ""
+        try:
+            dt = _dt.fromisoformat(record["created_at"].replace("Z", "+00:00"))
+            created_label = dt.strftime("%B %-d, %Y")
+        except Exception:
+            created_label = (record.get("created_at") or "")[:10]
+
+        html_body = templates.get_template("pdf/transcript.html").render({
+            "filename": record.get("filename") or "Transcript",
+            "created_label": created_label,
+            "duration_label": duration_label,
+            "speaker_count": len(speaker_to_color),
+            "recap": (record.get("recap") or "").strip() or None,
+            "speaker_chips": speaker_chips,
+            "segments": rows,
+        })
+        pdf_bytes = _HTML(string=html_body, base_url=str(Path.cwd())).write_pdf()
+
+        filename = f"{stem}.pdf"
+        disposition = f"attachment; filename=\"{filename}\"; filename*=UTF-8''{quote(filename)}"
+        return Response(
+            content=pdf_bytes,
+            headers={"Content-Disposition": disposition},
+            media_type="application/pdf",
+        )
+
+    # --- Plain text formats ---
     field_map = {"txt": "transcript_text", "srt": "transcript_srt", "vtt": "transcript_vtt"}
     content = record[field_map[fmt]] or ""
-    stem = _safe_filename(Path(record["filename"]).stem) or "transcript"
     filename = f"{stem}.{fmt}"
     # RFC 5987 encoding handles non-ASCII and guards against header injection
     disposition = f"attachment; filename=\"{filename}\"; filename*=UTF-8''{quote(filename)}"
@@ -260,24 +584,84 @@ async def download_transcription(job_id: str, fmt: str):
 
 
 @app.get("/api/transcriptions/{job_id}/vtt-inline")
-async def vtt_inline(job_id: str):
-    record = await db.get_transcription(job_id)
-    if not record:
-        raise HTTPException(404, "Transcription not found")
+async def vtt_inline(job_id: str, user: dict = Depends(auth.require_user)):
+    record = _require_owner(await db.get_transcription(job_id), user)
     if record["status"] != "done":
         raise HTTPException(400, "Transcription not complete")
 
-    return Response(
-        content=record["transcript_vtt"] or "",
-        media_type="text/vtt",
+    # Regenerate from segments_json on each call so caption-chunking rules
+    # (short cues, single-line display) apply even to pre-existing transcripts.
+    import json as _json
+    from transcriber import generate_vtt
+    if record.get("transcript_segments_json"):
+        try:
+            segments = _json.loads(record["transcript_segments_json"]) or []
+            vtt = generate_vtt(segments)
+        except Exception:
+            vtt = record.get("transcript_vtt") or ""
+    else:
+        vtt = record.get("transcript_vtt") or ""
+
+    return Response(content=vtt, media_type="text/vtt")
+
+
+@app.patch("/api/transcriptions/{job_id}/speakers")
+async def rename_speakers(job_id: str, request: Request, user: dict = Depends(auth.require_user)):
+    """Rename speaker labels across all segments. Body: {"mapping": {"Speaker A": "Pete", ...}}"""
+    import json as _json
+    from transcriber import generate_srt, generate_vtt
+
+    record = _require_owner(await db.get_transcription(job_id), user)
+    if not record.get("transcript_segments_json"):
+        raise HTTPException(400, "Transcription has no segments to rename")
+
+    body = await request.json()
+    mapping = body.get("mapping") or {}
+    if not isinstance(mapping, dict) or not mapping:
+        raise HTTPException(400, "mapping must be a non-empty object")
+
+    # Sanity: cap name length, reject CR/LF
+    clean: dict[str, str] = {}
+    for old, new in mapping.items():
+        if not isinstance(old, str) or not isinstance(new, str):
+            continue
+        new = new.strip()
+        if not new:
+            continue
+        if "\r" in new or "\n" in new or len(new) > 80:
+            raise HTTPException(400, "Speaker names must be ≤80 chars and without line breaks")
+        clean[old] = new
+    if not clean:
+        raise HTTPException(400, "No valid renames in mapping")
+
+    try:
+        segments = _json.loads(record["transcript_segments_json"]) or []
+    except Exception:
+        raise HTTPException(500, "Stored segments are corrupt")
+
+    changed = 0
+    for seg in segments:
+        label = seg.get("speaker")
+        if label and label in clean:
+            seg["speaker"] = clean[label]
+            changed += 1
+
+    new_segments_json = _json.dumps(segments)
+    new_srt = generate_srt(segments)
+    new_vtt = generate_vtt(segments)
+
+    await db.update_transcription(
+        job_id,
+        transcript_segments_json=new_segments_json,
+        transcript_srt=new_srt,
+        transcript_vtt=new_vtt,
     )
+    return {"ok": True, "segments_updated": changed, "mapping": clean}
 
 
 @app.patch("/api/transcriptions/{job_id}")
-async def rename_transcription(job_id: str, filename: str = Form(...)):
-    record = await db.get_transcription(job_id)
-    if not record:
-        raise HTTPException(404, "Transcription not found")
+async def rename_transcription(job_id: str, filename: str = Form(...), user: dict = Depends(auth.require_user)):
+    _require_owner(await db.get_transcription(job_id), user)
     clean = _safe_filename(filename)
     if not clean:
         raise HTTPException(400, "Filename cannot be empty")
@@ -286,10 +670,8 @@ async def rename_transcription(job_id: str, filename: str = Form(...)):
 
 
 @app.delete("/api/transcriptions/{job_id}")
-async def delete_transcription(job_id: str):
-    record = await db.get_transcription(job_id)
-    if not record:
-        raise HTTPException(404, "Transcription not found")
+async def delete_transcription(job_id: str, user: dict = Depends(auth.require_user)):
+    record = _require_owner(await db.get_transcription(job_id), user)
 
     # Clean up video file if stored
     if record.get("video_path"):
@@ -300,10 +682,8 @@ async def delete_transcription(job_id: str):
 
 
 @app.post("/api/transcriptions/{job_id}/retry")
-async def retry_transcription(job_id: str):
-    record = await db.get_transcription(job_id)
-    if not record:
-        raise HTTPException(404, "Transcription not found")
+async def retry_transcription(job_id: str, user: dict = Depends(auth.require_user)):
+    record = _require_owner(await db.get_transcription(job_id), user)
     if record["status"] != "error":
         raise HTTPException(400, "Only failed transcriptions can be retried")
     if not record.get("video_path") or not Path(record["video_path"]).exists():
@@ -318,23 +698,21 @@ async def retry_transcription(job_id: str):
     )
 
     video_path = Path(record["video_path"])
-    asyncio.create_task(_run_with_semaphore(job_id, video_path))
+    _track_transcription(asyncio.create_task(_run_with_semaphore(job_id, video_path)))
 
     return {"id": job_id, "status": "pending"}
 
 
 @app.get("/api/search")
-async def search_transcriptions(q: str = ""):
+async def search_transcriptions(q: str = "", user: dict = Depends(auth.require_user)):
     if not q or len(q) < 2:
         return []
-    return await db.search_transcriptions(q)
+    return await db.search_transcriptions(q, user_id=user["user_id"])
 
 
 @app.post("/api/transcriptions/{job_id}/video")
-async def upload_video_preview(job_id: str, file: UploadFile):
-    record = await db.get_transcription(job_id)
-    if not record:
-        raise HTTPException(404, "Transcription not found")
+async def upload_video_preview(job_id: str, file: UploadFile, user: dict = Depends(auth.require_user)):
+    _require_owner(await db.get_transcription(job_id), user)
 
     ext = Path(file.filename).suffix.lower() if file.filename else ".mp4"
     if ext not in VIDEO_PREVIEW_EXTENSIONS:
@@ -356,10 +734,8 @@ async def upload_video_preview(job_id: str, file: UploadFile):
 
 
 @app.get("/api/transcriptions/{job_id}/video")
-async def get_video(job_id: str):
-    record = await db.get_transcription(job_id)
-    if not record:
-        raise HTTPException(404, "Transcription not found")
+async def get_video(job_id: str, user: dict = Depends(auth.require_user)):
+    record = _require_owner(await db.get_transcription(job_id), user)
     if not record.get("video_path") or not Path(record["video_path"]).exists():
         raise HTTPException(404, "Video file not found")
 
@@ -378,10 +754,8 @@ async def get_video(job_id: str):
 
 
 @app.delete("/api/transcriptions/{job_id}/video")
-async def delete_video(job_id: str):
-    record = await db.get_transcription(job_id)
-    if not record:
-        raise HTTPException(404, "Transcription not found")
+async def delete_video(job_id: str, user: dict = Depends(auth.require_user)):
+    record = _require_owner(await db.get_transcription(job_id), user)
     if record.get("video_path"):
         Path(record["video_path"]).unlink(missing_ok=True)
         await db.update_transcription(job_id, video_path=None)
@@ -389,10 +763,8 @@ async def delete_video(job_id: str):
 
 
 @app.post("/api/transcriptions/{job_id}/recap")
-async def get_or_generate_recap(job_id: str, regenerate: bool = False):
-    record = await db.get_transcription(job_id)
-    if not record:
-        raise HTTPException(404, "Transcription not found")
+async def get_or_generate_recap(job_id: str, regenerate: bool = False, user: dict = Depends(auth.require_user)):
+    record = _require_owner(await db.get_transcription(job_id), user)
     if record["status"] != "done":
         raise HTTPException(400, "Transcription not complete")
 
@@ -424,9 +796,10 @@ async def send_email(
     to: str = Form(...),
     subject: str = Form(...),
     body: str = Form(...),
+    user: dict = Depends(auth.require_user),
 ):
-    import smtplib
-    from email.message import EmailMessage
+    import html as _html
+    from email_service import send_recap_email
 
     to = _validate_email(to)
     subject = _reject_crlf(subject.strip(), "subject")
@@ -437,36 +810,49 @@ async def send_email(
     if len(body) > MAX_EMAIL_BODY_LEN:
         raise HTTPException(400, f"Body too long (max {MAX_EMAIL_BODY_LEN} chars)")
 
-    smtp_host = os.getenv("SMTP_HOST")
-    smtp_port = int(os.getenv("SMTP_PORT", "587"))
-    smtp_user = os.getenv("SMTP_USER")
-    smtp_pass = os.getenv("SMTP_PASS")
-    from_addr = os.getenv("SMTP_FROM", smtp_user)
+    # Append user signature + Videoscriber branding. Free users cannot remove
+    # the branding; only Plus users can hide it via their settings.
+    plan = user.get("plan") or "free"
+    hide_branding = bool(user.get("email_branding_hidden")) and plan == "plus"
+    signature = (user.get("email_signature") or "").strip()
 
-    if not all([smtp_host, smtp_user, smtp_pass]):
-        raise HTTPException(400, "Email not configured. Set SMTP_HOST, SMTP_USER, and SMTP_PASS in .env")
+    text_parts = [body.rstrip()]
+    if signature:
+        text_parts.append(signature)
+    if not hide_branding:
+        text_parts.append("\u2728 Sent with videoscriber.ai (https://videoscriber.ai)")
+    body_text = "\n\n".join(text_parts)
 
-    msg = EmailMessage()
-    msg["Subject"] = subject
-    msg["From"] = from_addr
-    msg["To"] = to
-    msg.set_content(body)
+    def _p(text: str) -> str:
+        return "".join(f"<p>{_html.escape(line) or '&nbsp;'}</p>" for line in text.split("\n"))
+    html_parts = [f"<div>{_p(body.rstrip())}</div>"]
+    if signature:
+        html_parts.append(f"<div style='margin-top:16px;color:#444'>{_p(signature)}</div>")
+    if not hide_branding:
+        html_parts.append(
+            "<div style='margin-top:24px;color:#888;font-size:12px'>"
+            "\u2728 Sent with <a href='https://videoscriber.ai' "
+            "style='color:#8B5CF6;text-decoration:none'>videoscriber.ai</a>"
+            "</div>"
+        )
+    body_html = "".join(html_parts)
 
-    try:
-        with smtplib.SMTP(smtp_host, smtp_port) as server:
-            server.starttls()
-            server.login(smtp_user, smtp_pass)
-            server.send_message(msg)
-    except smtplib.SMTPAuthenticationError:
-        raise HTTPException(502, "SMTP authentication failed. Check SMTP_USER and SMTP_PASS.")
-    except smtplib.SMTPException as e:
-        logger.warning("SMTP failure: %s", e)
-        raise HTTPException(502, "Failed to send email via SMTP server.")
-    except OSError as e:
-        logger.warning("SMTP connection failure: %s", e)
-        raise HTTPException(502, "Could not connect to SMTP server.")
-
+    from_override = _resolve_from_address(user)
+    await send_recap_email(to, subject, body_text, body_html, from_override=from_override)
     return {"ok": True}
+
+
+def _resolve_from_address(user: dict) -> str | None:
+    """Return a Plus user's verified custom-domain from-address, else None."""
+    if (user.get("plan") or "free") != "plus":
+        return None
+    if user.get("custom_email_domain_status") != "verified":
+        return None
+    domain = (user.get("custom_email_domain") or "").strip()
+    if not domain:
+        return None
+    name = (user.get("full_name") or "").strip() or "VideoScriber"
+    return f"{name} <noreply@{domain}>"
 
 
 # ============================================================

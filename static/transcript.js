@@ -50,22 +50,12 @@ export function renderProcessing(record) {
   const progressBar = document.getElementById('processing-progress-bar');
   const detail = document.getElementById('processing-detail');
 
-  const label = record.status === 'extracting' ? 'Extracting audio...' : 'Transcribing...';
+  const pct = Math.max(1, Math.min(100, record.progress || 0));
+  const label = record.status === 'extracting' ? 'Preparing your recording' : 'Transcribing';
   status.textContent = label;
-  progress.value = record.progress;
-  if (progressBar) progressBar.style.width = `${record.progress}%`;
-
-  let detailText = `${record.progress}%`;
-  if (record.total_chunks && record.completed_chunks !== null) {
-    detailText = `Chunk ${record.completed_chunks}/${record.total_chunks}`;
-    if (record.processing_started_at && record.completed_chunks > 0) {
-      const elapsed = (Date.now() - new Date(record.processing_started_at).getTime()) / 1000;
-      const rate = record.completed_chunks / elapsed;
-      const remaining = (record.total_chunks - record.completed_chunks) / rate;
-      detailText += ` \u2022 ~${formatTime(remaining)} remaining`;
-    }
-  }
-  detail.textContent = detailText;
+  progress.value = pct;
+  if (progressBar) progressBar.style.width = `${pct}%`;
+  detail.textContent = `${pct}%`;
 }
 
 export function renderError(record) {
@@ -89,12 +79,14 @@ export function clearTranscript() {
   rawView.textContent = '';
 }
 
+let currentJobId = null;
+
 function renderSegments(record) {
   currentSegments = [];
+  currentJobId = record.id;
   segmentsView.innerHTML = '';
 
   if (!record.transcript_segments_json) {
-    // Fallback: show plain text if no segments
     segmentsView.innerHTML = `<div class="segment"><span class="segment-text">${escapeHtml(record.transcript_text || '')}</span></div>`;
     return;
   }
@@ -106,30 +98,76 @@ function renderSegments(record) {
     return;
   }
 
-  const frag = document.createDocumentFragment();
   const speakerMap = {};
   let speakerIndex = 0;
+  for (const seg of currentSegments) {
+    if (seg.speaker && !(seg.speaker in speakerMap)) {
+      speakerMap[seg.speaker] = speakerIndex++;
+    }
+  }
 
+  // Speakers bar (only render if there are speakers)
+  if (Object.keys(speakerMap).length) {
+    const bar = document.createElement('div');
+    bar.className = 'speakers-bar';
+    const label = document.createElement('span');
+    label.className = 'speakers-bar-label';
+    label.textContent = 'Speakers';
+    bar.appendChild(label);
+
+    for (const name of Object.keys(speakerMap)) {
+      const chip = document.createElement('span');
+      chip.className = `speaker-chip speaker-${speakerMap[name] % 8}`;
+      chip.dataset.original = name;
+      const dot = document.createElement('span');
+      dot.className = 'speaker-chip-dot';
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = name;
+      input.setAttribute('aria-label', `Rename ${name}`);
+      input.spellcheck = false;
+      input.addEventListener('change', () => commitRename(chip, input));
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        if (e.key === 'Escape') { input.value = chip.dataset.original; input.blur(); }
+      });
+      chip.appendChild(dot);
+      chip.appendChild(input);
+      bar.appendChild(chip);
+    }
+    segmentsView.appendChild(bar);
+  }
+
+  const frag = document.createDocumentFragment();
   for (const seg of currentSegments) {
     const div = document.createElement('div');
     div.className = 'segment';
     div.dataset.start = seg.start;
     div.dataset.end = seg.end;
+    div.setAttribute('role', 'button');
+    div.setAttribute('tabindex', '0');
+    div.setAttribute('aria-label', `Play from ${formatTimestamp(seg.start)}`);
+    // Seek on click anywhere in the segment (except on the rename chip inputs)
+    div.addEventListener('click', (e) => {
+      if (e.target.closest('input, button, a')) return;
+      seekVideo(seg.start);
+    });
+    div.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); seekVideo(seg.start); }
+    });
 
     const ts = document.createElement('button');
     ts.className = 'segment-timestamp';
     ts.textContent = formatTimestamp(seg.start);
     ts.setAttribute('aria-label', `Seek to ${formatTimestamp(seg.start)}`);
-    ts.onclick = () => seekVideo(seg.start);
+    ts.onclick = (e) => { e.stopPropagation(); seekVideo(seg.start); };
     div.appendChild(ts);
 
     if (seg.speaker) {
-      if (!(seg.speaker in speakerMap)) {
-        speakerMap[seg.speaker] = speakerIndex++;
-      }
       const pill = document.createElement('span');
       pill.className = `segment-speaker speaker-${speakerMap[seg.speaker] % 8}`;
       pill.textContent = seg.speaker;
+      pill.dataset.speaker = seg.speaker;
       div.appendChild(pill);
     }
 
@@ -142,6 +180,44 @@ function renderSegments(record) {
   }
 
   segmentsView.appendChild(frag);
+}
+
+async function commitRename(chip, input) {
+  const original = chip.dataset.original;
+  const next = input.value.trim();
+  if (!next || next === original) {
+    input.value = original;
+    return;
+  }
+  chip.classList.add('saving');
+  try {
+    const res = await fetch(`/api/transcriptions/${currentJobId}/speakers`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mapping: { [original]: next } }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || data.error || 'Rename failed');
+    // Update in-memory segments so next render is consistent
+    for (const seg of currentSegments) {
+      if (seg.speaker === original) seg.speaker = next;
+    }
+    // Update every pill in the transcript immediately
+    segmentsView.querySelectorAll(`.segment-speaker[data-speaker="${CSS.escape(original)}"]`).forEach((p) => {
+      p.textContent = next;
+      p.dataset.speaker = next;
+    });
+    chip.dataset.original = next;
+    chip.classList.add('saved');
+    setTimeout(() => chip.classList.remove('saved'), 1200);
+  } catch (err) {
+    console.error(err);
+    input.value = original;
+    chip.classList.add('error');
+    setTimeout(() => chip.classList.remove('error'), 1600);
+  } finally {
+    chip.classList.remove('saving');
+  }
 }
 
 function seekVideo(seconds) {

@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings — Videoscriber</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/components.css">
+    <link rel="stylesheet" href="/static/public.css">
+</head>
+<body class="public-body">
+<div class="settings-wrapper">
+    <div class="settings-topbar">
+        <a href="/app" class="settings-back" aria-label="Back to Videoscriber">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+            Back
+        </a>
+        <h1 class="settings-title">Settings</h1>
+    </div>
+
+    <div class="settings-success" id="profile-success">Profile updated</div>
+
+    <section class="settings-section">
+        <h2>Profile</h2>
+        <p class="section-sub">Update how we address you and where to send your recap drafts.</p>
+        <div class="form-error" id="profile-error"></div>
+        <form id="profile-form">
+            <div class="form-field">
+                <label for="full_name">Full name</label>
+                <input type="text" id="full_name" name="full_name" class="form-input" value="{{ user.full_name or '' }}" required>
+            </div>
+            <div class="form-field">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" class="form-input" value="{{ user.email or '' }}" required>
+            </div>
+            <div class="settings-save">
+                <button type="submit" class="btn btn-primary" id="profile-submit">Save changes</button>
+            </div>
+        </form>
+    </section>
+
+    <section class="settings-section">
+        <h2>Email signature</h2>
+        <p class="section-sub">Appended to every recap email you send. Your name, title, links &mdash; whatever you want at the bottom.</p>
+        <div class="settings-success" id="sig-success">Email settings saved</div>
+        <div class="form-error" id="sig-error"></div>
+        <form id="sig-form">
+            <div class="form-field">
+                <label for="email_signature">Signature</label>
+                <textarea id="email_signature" name="signature" class="form-input"
+                          rows="5" maxlength="2000"
+                          placeholder="Pete Helms
+Videoscriber &middot; https://videoscriber.ai">{{ user.email_signature or '' }}</textarea>
+            </div>
+
+            {% set is_plus = (user.plan or 'free') == 'plus' %}
+            <label class="form-checkbox" style="margin-top: 4px;">
+                <input type="checkbox" name="branding_hidden" id="branding_hidden"
+                       {% if user.email_branding_hidden %}checked{% endif %}
+                       {% if not is_plus %}disabled{% endif %}>
+                <span>
+                    Hide Videoscriber branding on my emails.
+                    {% if not is_plus %}
+                    <br><span style="color: var(--text-muted); font-size: 12px;">Plus plan only. <a href="/upgrade" style="color: var(--accent);">Upgrade &rarr;</a></span>
+                    {% endif %}
+                </span>
+            </label>
+
+            <div class="settings-save">
+                <button type="submit" class="btn btn-primary" id="sig-submit">Save</button>
+            </div>
+        </form>
+    </section>
+
+    {% set is_plus = (user.plan or 'free') == 'plus' %}
+    <section class="settings-section" id="domain-section">
+        <h2>Send from your own domain</h2>
+        <p class="section-sub">
+            Plus users can ship recap emails from their own verified domain.
+            Add your domain, copy the DNS records into your registrar, then click Verify.
+            {% if not is_plus %}
+            <br><span style="color: var(--text-muted); font-size: 12px;">Plus plan only. <a href="/upgrade" style="color: var(--accent);">Upgrade &rarr;</a></span>
+            {% endif %}
+        </p>
+
+        <div class="form-error" id="domain-error"></div>
+        <div class="settings-success" id="domain-success"></div>
+
+        <div id="domain-empty" hidden>
+            <form id="domain-add-form">
+                <div class="form-field">
+                    <label for="domain_input">Domain</label>
+                    <input type="text" id="domain_input" name="domain" class="form-input"
+                           placeholder="example.com" autocomplete="off"
+                           {% if not is_plus %}disabled{% endif %}>
+                </div>
+                <div class="settings-save">
+                    <button type="submit" class="btn btn-primary" id="domain-add-submit"
+                            {% if not is_plus %}disabled{% endif %}>Add domain</button>
+                </div>
+            </form>
+        </div>
+
+        <div id="domain-configured" hidden>
+            <div class="readonly-row">
+                <span class="label">Domain</span>
+                <span class="value" id="domain-name-display"></span>
+            </div>
+            <div class="readonly-row">
+                <span class="label">Status</span>
+                <span class="value"><span class="status-chip" id="domain-status-chip">pending</span></span>
+            </div>
+
+            <p class="section-sub" style="margin-top: 16px;">
+                Add the records below to your DNS provider. Resend uses these to authenticate mail sent from your domain.
+            </p>
+            <div class="dns-records-wrap">
+                <table class="dns-records">
+                    <thead>
+                        <tr><th>Type</th><th>Name</th><th>Value</th><th>TTL</th><th></th></tr>
+                    </thead>
+                    <tbody id="dns-records-body"></tbody>
+                </table>
+            </div>
+
+            <div class="settings-save" style="display: flex; gap: 10px;">
+                <button type="button" class="btn btn-primary" id="domain-verify">Verify</button>
+                <button type="button" class="btn-danger" id="domain-remove">Remove domain</button>
+            </div>
+        </div>
+    </section>
+
+    <section class="settings-section">
+        <h2>Account</h2>
+        <p class="section-sub">Read-only details about your account. Phone number is the primary identifier for sign-in.</p>
+        <div class="readonly-row"><span class="label">Phone</span><span class="value">{{ user.phone }}</span></div>
+        <div class="readonly-row"><span class="label">Account ID</span><span class="value">{{ user.user_id[:8] }}…</span></div>
+    </section>
+
+    <section class="settings-section">
+        <h2>Sign out</h2>
+        <p class="section-sub">End your session on this device. You'll need to verify your phone again to get back in.</p>
+        <div class="settings-danger-row">
+            <div class="copy">
+                <div class="title">Log out</div>
+                <div class="desc">Clears your session cookie immediately.</div>
+            </div>
+            <form method="POST" action="/auth/logout" style="margin:0">
+                <button type="submit" class="btn-danger">Log out</button>
+            </form>
+        </div>
+    </section>
+
+    <section class="settings-section">
+        <h2>Delete account</h2>
+        <p class="section-sub">
+            To permanently delete your account and all associated data, email
+            <a href="mailto:support@videoscriber.ai?subject=Account%20deletion%20request">support@videoscriber.ai</a>
+            from your account email. We'll confirm and process within 30 days.
+        </p>
+    </section>
+</div>
+<script>
+(() => {
+    // Email signature form
+    const sigForm = document.getElementById('sig-form');
+    const sigErr = document.getElementById('sig-error');
+    const sigOk = document.getElementById('sig-success');
+    const sigSubmit = document.getElementById('sig-submit');
+    if (sigForm) {
+        sigForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            sigErr.textContent = ''; sigErr.classList.remove('active');
+            sigOk.classList.remove('active');
+            sigSubmit.disabled = true; sigSubmit.textContent = 'Saving…';
+            try {
+                const body = new URLSearchParams({
+                    signature: sigForm.signature.value,
+                    branding_hidden: sigForm.branding_hidden && sigForm.branding_hidden.checked ? 'on' : 'off',
+                });
+                const res = await fetch('/auth/email-settings', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body,
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.detail || data.error || 'Save failed');
+                sigOk.classList.add('active');
+                setTimeout(() => sigOk.classList.remove('active'), 2500);
+            } catch (err) {
+                sigErr.textContent = err.message; sigErr.classList.add('active');
+            } finally {
+                sigSubmit.disabled = false; sigSubmit.textContent = 'Save';
+            }
+        });
+    }
+
+    // Custom email domain (Plus-only)
+    const isPlus = {{ 'true' if (user.plan or 'free') == 'plus' else 'false' }};
+    if (isPlus) {
+        const domainEmpty = document.getElementById('domain-empty');
+        const domainConfigured = document.getElementById('domain-configured');
+        const domainErr = document.getElementById('domain-error');
+        const domainOk = document.getElementById('domain-success');
+        const addForm = document.getElementById('domain-add-form');
+        const addSubmit = document.getElementById('domain-add-submit');
+        const nameDisplay = document.getElementById('domain-name-display');
+        const statusChip = document.getElementById('domain-status-chip');
+        const recordsBody = document.getElementById('dns-records-body');
+        const verifyBtn = document.getElementById('domain-verify');
+        const removeBtn = document.getElementById('domain-remove');
+
+        const showErr = (msg) => {
+            domainErr.textContent = msg;
+            domainErr.classList.add('active');
+            setTimeout(() => domainErr.classList.remove('active'), 5000);
+        };
+        const showOk = (msg) => {
+            domainOk.textContent = msg;
+            domainOk.classList.add('active');
+            setTimeout(() => domainOk.classList.remove('active'), 3000);
+        };
+
+        const renderRecords = (records) => {
+            recordsBody.innerHTML = (records || []).map(r => `
+                <tr>
+                    <td><code>${r.type || ''}</code></td>
+                    <td class="dns-cell"><code>${r.name || ''}</code></td>
+                    <td class="dns-cell"><code>${r.value || ''}</code></td>
+                    <td>${r.ttl || 'Auto'}</td>
+                    <td><button type="button" class="dns-copy" data-copy="${(r.value || '').replace(/"/g, '&quot;')}">Copy</button></td>
+                </tr>
+            `).join('');
+            recordsBody.querySelectorAll('.dns-copy').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    try {
+                        await navigator.clipboard.writeText(btn.dataset.copy);
+                        btn.textContent = 'Copied';
+                        setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+                    } catch {}
+                });
+            });
+        };
+
+        const render = (state) => {
+            const configured = state && state.domain_id;
+            domainEmpty.hidden = !!configured;
+            domainConfigured.hidden = !configured;
+            if (!configured) return;
+            nameDisplay.textContent = state.domain;
+            statusChip.textContent = state.status;
+            statusChip.className = `status-chip status-${state.status}`;
+            renderRecords(state.records);
+        };
+
+        const load = async () => {
+            try {
+                const res = await fetch('/api/email-domain');
+                if (res.ok) render(await res.json());
+            } catch {}
+        };
+
+        addForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            addSubmit.disabled = true; addSubmit.textContent = 'Adding…';
+            try {
+                const body = new URLSearchParams({ domain: addForm.domain.value });
+                const res = await fetch('/api/email-domain', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body,
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.detail || 'Could not add domain');
+                render(data);
+                showOk('Domain added. Add the DNS records below, then click Verify.');
+            } catch (err) {
+                showErr(err.message);
+            } finally {
+                addSubmit.disabled = false; addSubmit.textContent = 'Add domain';
+            }
+        });
+
+        verifyBtn.addEventListener('click', async () => {
+            verifyBtn.disabled = true; verifyBtn.textContent = 'Checking…';
+            try {
+                const res = await fetch('/api/email-domain/verify', { method: 'POST' });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.detail || 'Verification failed');
+                render(data);
+                if (data.status === 'verified') {
+                    showOk('Domain verified — your recap emails will now ship from ' + data.domain + '.');
+                } else {
+                    showErr('DNS records aren\u2019t fully propagated yet. Try again in a few minutes.');
+                }
+            } catch (err) {
+                showErr(err.message);
+            } finally {
+                verifyBtn.disabled = false; verifyBtn.textContent = 'Verify';
+            }
+        });
+
+        removeBtn.addEventListener('click', async () => {
+            if (!confirm('Remove this domain? You\u2019ll fall back to sending from videoscriber.ai.')) return;
+            removeBtn.disabled = true;
+            try {
+                const res = await fetch('/api/email-domain', { method: 'DELETE' });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.detail || 'Remove failed');
+                render(data);
+                showOk('Domain removed.');
+            } catch (err) {
+                showErr(err.message);
+            } finally {
+                removeBtn.disabled = false;
+            }
+        });
+
+        load();
+    }
+
+    const form = document.getElementById('profile-form');
+    const err = document.getElementById('profile-error');
+    const ok = document.getElementById('profile-success');
+    const submit = document.getElementById('profile-submit');
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        err.textContent = ''; err.classList.remove('active');
+        ok.classList.remove('active');
+        submit.disabled = true; submit.textContent = 'Saving…';
+        try {
+            const body = new URLSearchParams({
+                full_name: form.full_name.value,
+                email: form.email.value,
+            });
+            const res = await fetch('/auth/profile', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body,
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.detail || data.error || 'Save failed');
+            ok.classList.add('active');
+            setTimeout(() => ok.classList.remove('active'), 3000);
+        } catch (e) {
+            err.textContent = e.message; err.classList.add('active');
+        } finally {
+            submit.disabled = false; submit.textContent = 'Save changes';
+        }
+    });
+})();
+</script>
+</body>
+</html>

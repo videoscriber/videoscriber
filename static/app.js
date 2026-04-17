@@ -80,11 +80,53 @@ btnCopy.addEventListener('click', async () => {
   setTimeout(() => { span.textContent = orig; }, 1500);
 });
 
-// Download
-btnDownload.addEventListener('click', () => {
+// Download — PDF on Plus, nudge to upgrade on free (with plain-text fallback)
+async function downloadPdf() {
   if (!activeJobId) return;
-  const fmt = activeFormat === 'segments' ? 'txt' : activeFormat === 'text' ? 'txt' : activeFormat;
-  window.location.href = `/api/transcriptions/${activeJobId}/download/${fmt}`;
+  window.location.href = `/api/transcriptions/${activeJobId}/download/pdf`;
+}
+
+function showPdfUpgradeNudge() {
+  const existing = document.getElementById('pdf-upgrade-modal');
+  if (existing) { existing.hidden = false; return; }
+  const modal = document.createElement('div');
+  modal.id = 'pdf-upgrade-modal';
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal-dialog plus-nudge-dialog">
+      <div class="plus-nudge-icon">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      </div>
+      <h3>PDF export is a Plus feature</h3>
+      <p>Download a beautifully formatted PDF with the meeting summary on the cover, speaker labels, and the full transcript — ready to share or archive.</p>
+      <div class="plus-nudge-actions">
+        <button type="button" class="btn-ghost" data-act="txt">Download plain text</button>
+        <a href="/upgrade" class="btn-primary">Upgrade to Plus</a>
+      </div>
+    </div>`;
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) modal.hidden = true;
+    if (e.target.dataset.act === 'txt') {
+      modal.hidden = true;
+      window.location.href = `/api/transcriptions/${activeJobId}/download/txt`;
+    }
+  });
+  document.body.appendChild(modal);
+}
+
+btnDownload.addEventListener('click', async () => {
+  if (!activeJobId) return;
+  try {
+    const res = await fetch('/api/config');
+    const data = await res.json();
+    if ((data.plan?.tier || 'free') === 'plus') {
+      downloadPdf();
+    } else {
+      showPdfUpgradeNudge();
+    }
+  } catch {
+    showPdfUpgradeNudge();
+  }
 });
 
 // Retry
@@ -192,7 +234,7 @@ function updateListItemContent(el, item) {
   let statusLabel;
   if (item.status === 'done') statusLabel = 'Done';
   else if (item.status === 'error') statusLabel = 'Error';
-  else if (item.status === 'extracting') statusLabel = 'Extracting...';
+  else if (item.status === 'extracting') statusLabel = 'Extracting…';
   else if (item.status === 'transcribing') statusLabel = `${item.progress}%`;
   else if (item.status === 'pending') {
     const q = computeQueuePosition(item);
@@ -203,33 +245,41 @@ function updateListItemContent(el, item) {
 
   let progressHtml = '';
   if (item.status === 'transcribing' || item.status === 'extracting') {
-    let chunkInfo = '';
-    if (item.total_chunks && item.completed_chunks !== null && item.status === 'transcribing') {
-      chunkInfo = `<span style="font-size:0.6rem;color:var(--pico-muted-color)">Chunk ${item.completed_chunks}/${item.total_chunks}</span>`;
-    }
-    progressHtml = `<div class="item-progress"><progress value="${item.progress}" max="100"></progress>${chunkInfo}</div>`;
+    progressHtml = `<div class="item-progress"><progress value="${item.progress}" max="100"></progress></div>`;
   }
 
-  let actionsHtml = '';
-  if (item.status === 'error' && item.video_path) {
-    actionsHtml += `<button class="item-retry" onclick="window._retryJob('${item.id}', event)">Retry</button>`;
-  }
-  actionsHtml += `<button class="item-delete" title="Delete" onclick="window._deleteJob('${item.id}', event)">&times;</button>`;
+  const metaParts = [formatTimeAgo(item.created_at)];
+  if (item.duration_seconds) metaParts.push(formatDuration(item.duration_seconds));
+  metaParts.push(`<span class="item-status-inline status-${item.status}">${statusLabel}</span>`);
+  const metaHtml = metaParts.join(' <span class="meta-sep">•</span> ');
 
   const warningBadge = renderPostprocessWarning(item);
 
+  // Primary right-hand action swaps between retry/rename based on state.
+  let primaryActionHtml = '';
+  if (item.status === 'error' && item.video_path) {
+    primaryActionHtml = `<button class="item-action item-retry" title="Retry" onclick="window._retryJob('${item.id}', event)">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/></svg>
+    </button>`;
+  } else if (item.status === 'done') {
+    primaryActionHtml = `<button class="item-action item-rename" title="Rename" onclick="window._startItemRename('${item.id}', event)">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+    </button>`;
+  }
+
+  const deleteHtml = `<button class="item-action item-delete" title="Delete" onclick="window._deleteJob('${item.id}', event)">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+    </button>`;
+
   el.innerHTML = `
     <div class="item-info">
-      <span class="item-filename">${escapeHtml(item.filename)}</span>
-      <span class="item-meta">
-        ${formatTimeAgo(item.created_at)}${item.duration_seconds ? ' \u2022 ' + formatDuration(item.duration_seconds) : ''}
-      </span>
+      <span class="item-filename" data-id="${item.id}">${escapeHtml(item.filename)}</span>
+      <span class="item-meta">${metaHtml}</span>
     </div>
     <div class="item-right">
       ${progressHtml}
       ${warningBadge}
-      <span class="item-status status-${item.status}">${statusLabel}</span>
-      <div class="item-actions">${actionsHtml}</div>
+      <div class="item-actions">${primaryActionHtml}${deleteHtml}</div>
     </div>
   `;
 }
@@ -250,7 +300,10 @@ function renderPostprocessBanner(data) {
     items.push({ label: 'Speaker name identification failed — generic labels kept' });
   }
   if (data.enhancement_status === 'failed') {
-    items.push({ label: 'Video enhancement failed — original video kept' });
+    items.push({
+      label: 'Video enhancement failed — original video kept',
+      details: data.enhancement_error || null,
+    });
   }
   if (!items.length) {
     banner.hidden = true;
@@ -262,7 +315,10 @@ function renderPostprocessBanner(data) {
     const retry = it.retry === 'recap'
       ? '<button class="postprocess-retry" data-retry="recap">Try again</button>'
       : '';
-    return `<div class="postprocess-warning-item"><span>${escapeHtml(it.label)}</span>${retry}</div>`;
+    const details = it.details
+      ? `<details class="postprocess-details"><summary>Show details</summary><pre>${escapeHtml(it.details)}</pre></details>`
+      : '';
+    return `<div class="postprocess-warning-item"><span>${escapeHtml(it.label)}</span>${retry}</div>${details}`;
   }).join('');
   const retryBtn = banner.querySelector('[data-retry="recap"]');
   if (retryBtn) {
@@ -350,25 +406,29 @@ function showTranscript(data) {
 // === Delete with confirmation ===
 window._deleteJob = function(jobId, event) {
   event.stopPropagation();
-  const btn = event.target;
+  // Click may land on the SVG or an inner path — normalize to the button
+  const btn = event.currentTarget || event.target.closest('button');
+  if (!btn) return;
 
   if (btn.dataset.confirming === 'true') {
-    // Confirmed
     doDelete(jobId);
     return;
   }
 
+  // Preserve the SVG so we can restore it after the timeout/cancel
+  if (!btn.dataset.originalHtml) {
+    btn.dataset.originalHtml = btn.innerHTML;
+  }
   btn.dataset.confirming = 'true';
-  btn.textContent = 'Sure?';
+  btn.innerHTML = '<span class="item-delete-confirm">Sure?</span>';
   btn.classList.add('confirming');
 
-  const timer = setTimeout(() => {
+  clearTimeout(btn._cancelTimer);
+  btn._cancelTimer = setTimeout(() => {
     btn.dataset.confirming = '';
-    btn.textContent = '\u00d7';
+    btn.innerHTML = btn.dataset.originalHtml;
     btn.classList.remove('confirming');
   }, 3000);
-
-  btn._cancelTimer = timer;
 };
 
 async function doDelete(jobId) {
@@ -397,6 +457,56 @@ window._retryJob = async function(jobId, event) {
   startPolling(jobId);
   refreshList();
   showToast('Retrying transcription...', 'info');
+};
+
+// Inline rename from the sidebar list. Replaces the filename span with an input.
+window._startItemRename = function(jobId, event) {
+  event.stopPropagation();
+  const item = document.querySelector(`.transcription-item[data-id="${jobId}"]`);
+  if (!item) return;
+  const nameEl = item.querySelector('.item-filename');
+  if (!nameEl) return;
+  const original = nameEl.textContent;
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'item-filename-input';
+  input.value = original;
+  input.addEventListener('click', (e) => e.stopPropagation());
+
+  const finish = async (commit) => {
+    const next = input.value.trim();
+    input.replaceWith(nameEl);
+    nameEl.textContent = original;
+    if (!commit || !next || next === original) return;
+    try {
+      const body = new URLSearchParams({ filename: next });
+      const res = await fetch(`/api/transcriptions/${jobId}`, { method: 'PATCH', body });
+      if (!res.ok) throw new Error('Rename failed');
+      const data = await res.json();
+      nameEl.textContent = data.filename || next;
+      // Sync the detail-view title if this is the open transcript
+      if (jobId === activeJobId && activeRecord) {
+        activeRecord.filename = data.filename || next;
+        if (typeof transcriptTitle !== 'undefined' && transcriptTitle) {
+          transcriptTitle.textContent = activeRecord.filename;
+        }
+      }
+    } catch (e) {
+      showToast('Could not rename. Try again.', 'error');
+    }
+  };
+
+  input.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    if (e.key === 'Escape') { finish(false); }
+  });
+  input.addEventListener('blur', () => finish(true));
+
+  nameEl.replaceWith(input);
+  input.focus();
+  input.select();
 };
 
 // === Rename ===
@@ -598,11 +708,33 @@ function initShortcuts() {
 
     if (e.key === '?' || (e.shiftKey && e.key === '/')) { shortcutsModal.hidden = !shortcutsModal.hidden; return; }
     if (e.key === 'd' || e.key === 'D') { toggleTheme(); return; }
-    if (e.key === 'c') { btnCopy.click(); return; }
-    if (e.key === '1') { setFormat(0); return; }
-    if (e.key === '2') { setFormat(1); return; }
-    if (e.key === '3') { setFormat(2); return; }
-    if (e.key === '4') { setFormat(3); return; }
+    if (e.key === 'c' || e.key === 'C') {
+      // Copy only makes sense when viewing a transcript
+      if (!btnCopy.disabled) btnCopy.click();
+      return;
+    }
+    if (e.key === 'u' || e.key === 'U') {
+      // Upload — open the hidden file picker
+      const fi = document.getElementById('file-input');
+      if (fi) fi.click();
+      return;
+    }
+    if (e.key === 'a' || e.key === 'A') {
+      // AI Assistant — click the topbar button (handles free/plus gating)
+      const ab = document.getElementById('assistant-btn');
+      if (ab) ab.click();
+      return;
+    }
+    if (mod && e.key === 'f') {
+      // Find in transcript — focus the in-transcript search if visible
+      const s = document.getElementById('transcript-search-input');
+      if (s && !s.closest('.transcript-search').hidden) {
+        e.preventDefault();
+        s.focus();
+        s.select();
+        return;
+      }
+    }
 
     if (e.key === 'j' || e.key === 'k') {
       e.preventDefault();
@@ -695,6 +827,14 @@ function initRecap() {
 async function generateRecap(regenerate = false) {
   if (!activeJobId) return;
   openRecapModal();
+
+  // Fast path: the recap was pre-generated during post-processing. Open the
+  // editor immediately so the user sees real content, not a spinner.
+  if (!regenerate && activeRecord?.recap) {
+    populateRecapEditor(activeRecord.recap);
+    return;
+  }
+
   recapLoading.hidden = false;
   recapEditor.hidden = true;
   recapActions.hidden = true;
@@ -715,6 +855,8 @@ async function generateRecap(regenerate = false) {
       return;
     }
 
+    // Cache on the in-memory record so subsequent opens are instant too
+    if (activeRecord) activeRecord.recap = data.recap;
     populateRecapEditor(data.recap);
   } catch (e) {
     const msg = e.name === 'AbortError' ? 'Recap generation timed out' : 'Failed to generate recap';

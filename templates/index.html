@@ -15,17 +15,11 @@
     <header class="topbar">
         <div class="topbar-left">
             <button class="sidebar-toggle" id="sidebar-toggle" aria-label="Toggle sidebar">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
             </button>
-            <div class="brand">
-                <div class="brand-icon">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="url(#brandGrad)" stroke-width="2.5">
-                        <defs><linearGradient id="brandGrad" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#a78bfa"/><stop offset="100%" stop-color="#6366f1"/></linearGradient></defs>
-                        <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
-                    </svg>
-                </div>
-                <h1 class="topbar-title">Videoscriber</h1>
-            </div>
+            <a href="/app" class="brand" aria-label="Videoscriber home">
+                <img src="/static/brand/logo.svg?v=4" alt="Videoscriber" class="brand-logo-app">
+            </a>
         </div>
         <div class="topbar-center">
             <div class="topbar-search">
@@ -35,6 +29,11 @@
             </div>
         </div>
         <div class="topbar-right">
+            <button class="icon-btn assistant-btn" id="assistant-btn" aria-label="AI assistant" title="AI Assistant"
+                    {% if (plan or 'free') != 'plus' %}data-requires-plus="true"{% endif %}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l1.9 4.6L19 8l-4.1 3 1.2 5-4.1-2.5L8 16l1.2-5L5 8l5.1-1.4z"/><path d="M19.5 15.5L20 17l1.5.5-1.5.5-.5 1.5-.5-1.5-1.5-.5 1.5-.5z"/></svg>
+                <span class="assistant-btn-dot"></span>
+            </button>
             <button class="icon-btn" id="shortcuts-btn" aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M7 16h10"/></svg>
             </button>
@@ -42,6 +41,29 @@
                 <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
                 <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
             </button>
+            {% if user %}
+            <div class="user-menu" id="user-menu">
+                <button class="user-menu-btn" id="user-menu-btn" aria-haspopup="true" aria-expanded="false" title="Account">
+                    <span class="user-avatar">{{ (user.full_name or user.phone)[:1]|upper }}</span>
+                </button>
+                <div class="user-menu-dropdown" id="user-menu-dropdown" role="menu" hidden>
+                    <div class="user-menu-header">
+                        <div class="user-menu-name">{{ user.full_name or 'Account' }}</div>
+                        <div class="user-menu-detail">{{ user.email or user.phone }}</div>
+                    </div>
+                    <a href="/app/settings" class="user-menu-item" role="menuitem">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                        Settings
+                    </a>
+                    <form method="POST" action="/auth/logout" class="user-menu-logout-form">
+                        <button type="submit" class="user-menu-item" role="menuitem">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                            Log out
+                        </button>
+                    </form>
+                </div>
+            </div>
+            {% endif %}
         </div>
     </header>
 
@@ -65,15 +87,14 @@
                 <button class="modal-close" aria-label="Close">&times;</button>
             </div>
             <div class="shortcuts-grid">
-                <div class="shortcut-row"><span>Open search</span><kbd>&#8984;K</kbd></div>
-                <div class="shortcut-row"><span>Toggle theme</span><kbd>D</kbd></div>
+                <div class="shortcut-row"><span>Search transcripts</span><kbd>&#8984;K</kbd></div>
+                <div class="shortcut-row"><span>Upload a recording</span><kbd>U</kbd></div>
+                <div class="shortcut-row"><span>AI Assistant</span><kbd>A</kbd></div>
                 <div class="shortcut-row"><span>Navigate list</span><kbd>J</kbd> / <kbd>K</kbd></div>
                 <div class="shortcut-row"><span>Open selected</span><kbd>Enter</kbd></div>
                 <div class="shortcut-row"><span>Copy transcript</span><kbd>C</kbd></div>
-                <div class="shortcut-row"><span>Format: Segments</span><kbd>1</kbd></div>
-                <div class="shortcut-row"><span>Format: Text</span><kbd>2</kbd></div>
-                <div class="shortcut-row"><span>Format: SRT</span><kbd>3</kbd></div>
-                <div class="shortcut-row"><span>Format: VTT</span><kbd>4</kbd></div>
+                <div class="shortcut-row"><span>Find in transcript</span><kbd>&#8984;F</kbd></div>
+                <div class="shortcut-row"><span>Toggle theme</span><kbd>D</kbd></div>
                 <div class="shortcut-row"><span>Close / Deselect</span><kbd>Esc</kbd></div>
                 <div class="shortcut-row"><span>Show shortcuts</span><kbd>?</kbd></div>
             </div>
@@ -95,12 +116,39 @@
                 </div>
                 <input type="file" id="file-input" accept=".mp4,.mov,.avi,.mkv,.webm,.m4a,.mp3,.wav,.flac,.ogg" multiple hidden>
             </div>
-            <label id="diarize-option" class="diarize-toggle" hidden>
-                <input type="checkbox" id="diarize-checkbox">
-                <span>Identify speakers</span>
-            </label>
             <div id="upload-queue" class="upload-queue"></div>
         </section>
+
+        {% if plan %}
+        <section class="plan-widget">
+            {% if plan == 'plus' %}
+            <div class="plan-widget-card plus">
+                <div class="plan-widget-label">
+                    <span class="plan-widget-dot"></span>
+                    Plus plan
+                </div>
+                <div class="plan-widget-text">Unlimited transcriptions &middot; up to {{ plan_limits.max_file_mb }} MB</div>
+                <a href="/app/settings" class="plan-widget-link">Manage billing &rarr;</a>
+            </div>
+            {% else %}
+            {% set remaining = (plan_limits.monthly_limit - plan_used) if plan_limits.monthly_limit else 0 %}
+            {% set pct = ((plan_used / plan_limits.monthly_limit) * 100) if plan_limits.monthly_limit else 0 %}
+            <div class="plan-widget-card free">
+                <div class="plan-widget-label">
+                    <span class="plan-widget-dot"></span>
+                    Free plan
+                </div>
+                <div class="plan-widget-progress">
+                    <div class="plan-widget-progress-fill" style="width: {{ pct|round(0) }}%"></div>
+                </div>
+                <div class="plan-widget-text">
+                    {{ plan_used }} of {{ plan_limits.monthly_limit }} transcriptions this month
+                </div>
+                <a href="/upgrade" class="plan-widget-upgrade">Upgrade to Plus</a>
+            </div>
+            {% endif %}
+        </section>
+        {% endif %}
 
         <section class="sidebar-list">
             <div class="list-header">
@@ -250,6 +298,72 @@
     </div>
 
     <div id="toast-container" class="toast-container" role="status" aria-live="polite"></div>
+
+    <!-- AI Assistant drawer (Plus only) -->
+    <aside id="assistant-drawer" class="assistant-drawer" hidden aria-labelledby="assistant-title">
+        <header class="assistant-header">
+            <div class="assistant-header-left">
+                <div class="assistant-avatar">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l1.9 4.6L19 8l-4.1 3 1.2 5-4.1-2.5L8 16l1.2-5L5 8l5.1-1.4z"/></svg>
+                </div>
+                <div>
+                    <h3 id="assistant-title">AI Assistant</h3>
+                    <div class="assistant-scope" id="assistant-scope">Your library</div>
+                </div>
+            </div>
+            <div class="assistant-header-right">
+                <button class="icon-btn" id="assistant-new" aria-label="New conversation" title="New conversation">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                </button>
+                <button class="icon-btn" id="assistant-close" aria-label="Close assistant">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>
+            </div>
+        </header>
+        <div class="assistant-messages" id="assistant-messages"></div>
+        <form class="assistant-input" id="assistant-input-form">
+            <textarea id="assistant-input" placeholder="Ask about your recordings…" rows="1" aria-label="Message the AI Assistant"></textarea>
+            <button type="submit" class="btn-send" id="assistant-send" aria-label="Send message">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
+        </form>
+    </aside>
+
+    <!-- Upgrade nudge modal for free users clicking the assistant icon -->
+    <div id="plus-nudge" class="modal-overlay" hidden>
+        <div class="modal-dialog plus-nudge-dialog">
+            <div class="plus-nudge-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l1.9 4.6L19 8l-4.1 3 1.2 5-4.1-2.5L8 16l1.2-5L5 8l5.1-1.4z"/></svg>
+            </div>
+            <h3>AI Assistant is a Plus feature</h3>
+            <p>Chat with every transcript in your library at once. Ask questions, pull decisions, find quotes across recordings — with citations back to the exact moment.</p>
+            <div class="plus-nudge-actions">
+                <button type="button" class="btn-ghost" id="plus-nudge-close">Maybe later</button>
+                <a href="/upgrade" class="btn-primary">Upgrade to Plus</a>
+            </div>
+        </div>
+    </div>
+
     <script type="module" src="/static/app.js"></script>
+    <script type="module" src="/static/assistant.js"></script>
+    <script>
+    // User menu dropdown (open/close + click-outside)
+    (() => {
+        const btn = document.getElementById('user-menu-btn');
+        const dropdown = document.getElementById('user-menu-dropdown');
+        if (!btn || !dropdown) return;
+        const close = () => { dropdown.hidden = true; btn.setAttribute('aria-expanded', 'false'); };
+        const open = () => { dropdown.hidden = false; btn.setAttribute('aria-expanded', 'true'); };
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            dropdown.hidden ? open() : close();
+        });
+        document.addEventListener('click', (e) => {
+            if (dropdown.hidden) return;
+            if (!dropdown.contains(e.target) && e.target !== btn) close();
+        });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+    })();
+    </script>
 </body>
 </html>

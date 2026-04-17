@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 56" width="190" height="28" class="logo" aria-label="Videoscriber">
+  <defs>
+    <linearGradient id="dCam" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#B794F6" />
+      <stop offset="50%" style="stop-color:#8B5CF6" />
+      <stop offset="100%" style="stop-color:#6D28D9" />
+    </linearGradient>
+    <linearGradient id="dLens" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#A78BFA" />
+      <stop offset="100%" style="stop-color:#7C3AED" />
+    </linearGradient>
+  </defs>
+  <g transform="translate(28, 28)">
+    <rect x="-14" y="-11" width="22" height="22" rx="5" ry="5" fill="url(#dCam)" />
+    <path d="M 10,-6.5 L 15.5,-9.5 Q 17,-10.2 17,-8.5 L 17,8.5 Q 17,10.2 15.5,9.5 L 10,6.5 Z" fill="url(#dLens)" />
+    <g opacity="0.8">
+      <rect x="-9.5" y="-1.5" width="1.3" height="3"   rx="0.65" fill="#EDE9FE" />
+      <rect x="-7.5" y="-3.5" width="1.3" height="7"   rx="0.65" fill="#DDD6FE" />
+      <rect x="-5.5" y="-2"   width="1.3" height="4"   rx="0.65" fill="#EDE9FE" />
+      <rect x="-3.5" y="-6"   width="1.3" height="12"  rx="0.65" fill="#DDD6FE" />
+      <rect x="-1.5" y="-4"   width="1.3" height="8"   rx="0.65" fill="#EDE9FE" />
+      <rect x="0.5"  y="-5.5" width="1.3" height="11"  rx="0.65" fill="#DDD6FE" />
+      <rect x="2.5"  y="-3"   width="1.3" height="6"   rx="0.65" fill="#EDE9FE" />
+      <rect x="4.5"  y="-4.5" width="1.3" height="9"   rx="0.65" fill="#DDD6FE" />
+      <rect x="6.5"  y="-2"   width="1.3" height="4"   rx="0.65" fill="#EDE9FE" />
+    </g>
+  </g>
+  <text x="54" y="35" font-family="'Inter', system-ui, sans-serif" font-size="24" letter-spacing="0.5">
+    <tspan fill="currentColor" font-weight="500">Video</tspan><tspan fill="#A78BFA" font-weight="600">scriber</tspan>
+  </text>
+</svg>

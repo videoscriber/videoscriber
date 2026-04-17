@@ -1,5 +1,9 @@
 services:
   videoscriber:
+    # Default to the published image so `docker compose pull && up -d` works on
+    # the dev/prod servers without a local build. Local dev can still rebuild
+    # from source with `docker compose up --build`.
+    image: ghcr.io/videoscriber/videoscriber:${VIDEOSCRIBER_TAG:-latest}
     build: .
     ports:
       - "${PORT:-8000}:8000"
@@ -11,8 +15,13 @@ services:
       - ./data:/app/data
       - ./uploads:/app/uploads
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/config')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 5s
       retries: 3
     restart: unless-stopped
+    # Give the app up to 60s to finish in-flight ffmpeg work and atomically
+    # rename output files before Docker sends SIGKILL. Matches the app's
+    # GRACEFUL_SHUTDOWN_S so the two don't fight.
+    stop_grace_period: 60s
+    stop_signal: SIGTERM
