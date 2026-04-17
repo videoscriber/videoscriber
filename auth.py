@@ -175,6 +175,15 @@ async def complete_email_profile(user_id: str, full_name: str, phone: str | None
         await db.commit()
 
 
+async def update_email_settings(user_id: str, signature: str, branding_hidden: bool) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET email_signature = ?, email_branding_hidden = ? WHERE id = ?",
+            (signature or None, 1 if branding_hidden else 0, user_id),
+        )
+        await db.commit()
+
+
 async def mark_login(user_id: str) -> None:
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
@@ -208,7 +217,7 @@ async def get_session(token: str) -> dict | None:
         async with db.execute(
             "SELECT s.*, u.id AS user_id, u.phone, u.full_name, u.email, u.profile_completed_at, "
             "u.disabled_at, u.plan, u.stripe_customer_id, u.stripe_payment_method_id, "
-            "u.custom_email_domain "
+            "u.custom_email_domain, u.email_signature, u.email_branding_hidden "
             "FROM sessions s JOIN users u ON u.id = s.user_id "
             "WHERE s.token = ? AND s.expires_at > ? AND u.disabled_at IS NULL",
             (token, datetime.now(timezone.utc).isoformat()),

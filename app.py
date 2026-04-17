@@ -634,11 +634,41 @@ async def send_email(
     if not all([smtp_host, smtp_user, smtp_pass]):
         raise HTTPException(400, "Email not configured. Set SMTP_HOST, SMTP_USER, and SMTP_PASS in .env")
 
+    # Append user signature + Videoscriber branding. Free users cannot remove
+    # the branding; only Plus users can hide it via their settings.
+    plan = user.get("plan") or "free"
+    hide_branding = bool(user.get("email_branding_hidden")) and plan == "plus"
+    signature = (user.get("email_signature") or "").strip()
+
+    final_parts = [body.rstrip()]
+    if signature:
+        final_parts.append(signature)
+    if not hide_branding:
+        final_parts.append("\u2728 Sent with videoscriber.ai (https://videoscriber.ai)")
+    final_body = "\n\n".join(final_parts)
+
     msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"] = from_addr
     msg["To"] = to
-    msg.set_content(body)
+    msg.set_content(final_body)
+
+    # Also attach an HTML alternative so mail clients render the signature and
+    # branding link nicely.
+    import html as _html
+    def _p(text: str) -> str:
+        return "".join(f"<p>{_html.escape(line) or '&nbsp;'}</p>" for line in text.split("\n"))
+    html_parts = [f"<div>{_p(body.rstrip())}</div>"]
+    if signature:
+        html_parts.append(f"<div style='margin-top:16px;color:#444'>{_p(signature)}</div>")
+    if not hide_branding:
+        html_parts.append(
+            "<div style='margin-top:24px;color:#888;font-size:12px'>"
+            "\u2728 Sent with <a href='https://videoscriber.ai' "
+            "style='color:#8B5CF6;text-decoration:none'>videoscriber.ai</a>"
+            "</div>"
+        )
+    msg.add_alternative("".join(html_parts), subtype="html")
 
     try:
         with smtplib.SMTP(smtp_host, smtp_port) as server:

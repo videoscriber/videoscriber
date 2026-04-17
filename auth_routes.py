@@ -298,6 +298,26 @@ async def update_profile(
     return {"ok": True}
 
 
+# ----- Email settings (signature + branding toggle) -------------------------
+
+@router.patch("/auth/email-settings")
+async def update_email_settings(
+    request: Request,
+    signature: str = Form(default=""),
+    branding_hidden: str = Form(default="off"),
+):
+    user = await auth.current_user(request)
+    if not user:
+        raise HTTPException(401, "Not signed in")
+    sig = (signature or "").strip()
+    if len(sig) > 2000:
+        raise HTTPException(400, "Signature is too long (max 2000 characters)")
+    # Only Plus can hide the Videoscriber branding
+    want_hide = (branding_hidden == "on") and ((user.get("plan") or "free") == "plus")
+    await auth.update_email_settings(user["user_id"], sig, want_hide)
+    return {"ok": True, "signature": sig, "branding_hidden": want_hide}
+
+
 # ----- Logout ---------------------------------------------------------------
 
 @router.post("/auth/logout")

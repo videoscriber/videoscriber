@@ -43,6 +43,39 @@
     </section>
 
     <section class="settings-section">
+        <h2>Email signature</h2>
+        <p class="section-sub">Appended to every recap email you send. Your name, title, links &mdash; whatever you want at the bottom.</p>
+        <div class="settings-success" id="sig-success">Email settings saved</div>
+        <div class="form-error" id="sig-error"></div>
+        <form id="sig-form">
+            <div class="form-field">
+                <label for="email_signature">Signature</label>
+                <textarea id="email_signature" name="signature" class="form-input"
+                          rows="5" maxlength="2000"
+                          placeholder="Pete Helms
+Videoscriber &middot; https://videoscriber.ai">{{ user.email_signature or '' }}</textarea>
+            </div>
+
+            {% set is_plus = (user.plan or 'free') == 'plus' %}
+            <label class="form-checkbox" style="margin-top: 4px;">
+                <input type="checkbox" name="branding_hidden" id="branding_hidden"
+                       {% if user.email_branding_hidden %}checked{% endif %}
+                       {% if not is_plus %}disabled{% endif %}>
+                <span>
+                    Hide the <em>Sent with videoscriber.ai</em> footer on my emails.
+                    {% if not is_plus %}
+                    <br><span style="color: var(--text-muted); font-size: 12px;">Plus plan only. <a href="/upgrade" style="color: var(--accent);">Upgrade &rarr;</a></span>
+                    {% endif %}
+                </span>
+            </label>
+
+            <div class="settings-save">
+                <button type="submit" class="btn btn-primary" id="sig-submit">Save</button>
+            </div>
+        </form>
+    </section>
+
+    <section class="settings-section">
         <h2>Account</h2>
         <p class="section-sub">Read-only details about your account. Phone number is the primary identifier for sign-in.</p>
         <div class="readonly-row"><span class="label">Phone</span><span class="value">{{ user.phone }}</span></div>
@@ -74,6 +107,39 @@
 </div>
 <script>
 (() => {
+    // Email signature form
+    const sigForm = document.getElementById('sig-form');
+    const sigErr = document.getElementById('sig-error');
+    const sigOk = document.getElementById('sig-success');
+    const sigSubmit = document.getElementById('sig-submit');
+    if (sigForm) {
+        sigForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            sigErr.textContent = ''; sigErr.classList.remove('active');
+            sigOk.classList.remove('active');
+            sigSubmit.disabled = true; sigSubmit.textContent = 'Saving…';
+            try {
+                const body = new URLSearchParams({
+                    signature: sigForm.signature.value,
+                    branding_hidden: sigForm.branding_hidden && sigForm.branding_hidden.checked ? 'on' : 'off',
+                });
+                const res = await fetch('/auth/email-settings', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body,
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.detail || data.error || 'Save failed');
+                sigOk.classList.add('active');
+                setTimeout(() => sigOk.classList.remove('active'), 2500);
+            } catch (err) {
+                sigErr.textContent = err.message; sigErr.classList.add('active');
+            } finally {
+                sigSubmit.disabled = false; sigSubmit.textContent = 'Save';
+            }
+        });
+    }
+
     const form = document.getElementById('profile-form');
     const err = document.getElementById('profile-error');
     const ok = document.getElementById('profile-success');

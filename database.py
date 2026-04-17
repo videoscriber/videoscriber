@@ -49,7 +49,9 @@ CREATE TABLE IF NOT EXISTS users (
     stripe_customer_id TEXT,
     stripe_payment_method_id TEXT,
     plan_activated_at TEXT,
-    custom_email_domain TEXT
+    custom_email_domain TEXT,
+    email_signature TEXT,
+    email_branding_hidden INTEGER DEFAULT 0
 );
 -- Partial unique indexes: phone or email can be null, but must be unique if present.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone_unique ON users(phone) WHERE phone IS NOT NULL;
@@ -156,6 +158,8 @@ USER_MIGRATION_COLUMNS = [
     ("stripe_payment_method_id", "TEXT"),
     ("plan_activated_at", "TEXT"),
     ("custom_email_domain", "TEXT"),
+    ("email_signature", "TEXT"),
+    ("email_branding_hidden", "INTEGER DEFAULT 0"),
 ]
 
 
