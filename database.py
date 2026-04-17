@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS transcriptions (
 
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
-    phone TEXT UNIQUE NOT NULL,
+    phone TEXT,
     full_name TEXT,
     email TEXT,
     profile_completed_at TEXT,
@@ -45,7 +45,9 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TEXT NOT NULL,
     last_login_at TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+-- Partial unique indexes: phone or email can be null, but must be unique if present.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone_unique ON users(phone) WHERE phone IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(email) WHERE email IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS sessions (
     token TEXT PRIMARY KEY,
@@ -71,6 +73,18 @@ CREATE TABLE IF NOT EXISTS email_otp_codes (
 );
 CREATE INDEX IF NOT EXISTS idx_email_otp_phone ON email_otp_codes(phone, used_at);
 
+-- Email-primary signin (no phone required). Used during beta / when AUTH_MODE=email.
+CREATE TABLE IF NOT EXISTS email_signin_codes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL,
+    code_hash TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    used_at TEXT,
+    attempts INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_email_signin_email ON email_signin_codes(email, used_at);
+
 CREATE TABLE IF NOT EXISTS otp_rate_limits (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     key TEXT NOT NULL,
@@ -94,9 +108,44 @@ MIGRATION_COLUMNS = [
 ]
 
 
+async def _migrate_users_phone_nullable(db: aiosqlite.Connection) -> None:
+    """Older DBs have users.phone NOT NULL. Rebuild the table without that constraint."""
+    async with db.execute("PRAGMA table_info(users)") as cur:
+        cols = [row async for row in cur]
+    if not cols:
+        return  # table doesn't exist — CREATE TABLE in SCHEMA will make it correctly
+    phone_col = next((c for c in cols if c[1] == "phone"), None)
+    if not phone_col or phone_col[3] == 0:
+        return  # already nullable
+    await db.executescript(
+        "CREATE TABLE users_new ("
+        "  id TEXT PRIMARY KEY,"
+        "  phone TEXT,"
+        "  full_name TEXT,"
+        "  email TEXT,"
+        "  profile_completed_at TEXT,"
+        "  consented_tos_at TEXT,"
+        "  consented_tos_version TEXT,"
+        "  consented_privacy_at TEXT,"
+        "  consented_privacy_version TEXT,"
+        "  disabled_at TEXT,"
+        "  created_at TEXT NOT NULL,"
+        "  last_login_at TEXT"
+        ");"
+        "INSERT INTO users_new SELECT id, phone, full_name, email, profile_completed_at,"
+        "  consented_tos_at, consented_tos_version, consented_privacy_at, consented_privacy_version,"
+        "  disabled_at, created_at, last_login_at FROM users;"
+        "DROP TABLE users;"
+        "ALTER TABLE users_new RENAME TO users;"
+        "CREATE UNIQUE INDEX idx_users_phone_unique ON users(phone) WHERE phone IS NOT NULL;"
+        "CREATE UNIQUE INDEX idx_users_email_unique ON users(email) WHERE email IS NOT NULL;"
+    )
+
+
 async def init_db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(DB_PATH) as db:
+        await _migrate_users_phone_nullable(db)
         await db.executescript(SCHEMA)
 
         # Migrate existing databases: add new columns if missing

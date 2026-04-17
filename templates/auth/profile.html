@@ -7,7 +7,28 @@
         <h1>One last thing</h1>
         <p class="subtitle">Tell us who you are so we can personalize your follow-ups and recap emails.</p>
         <div class="form-error" id="profile-error"></div>
-        <form id="profile-form" autocomplete="on">
+
+        {% if user.email %}
+        {# Email-mode signup: we already have email; collect name + optional phone. #}
+        <form id="profile-form" autocomplete="on" data-mode="email">
+            <div class="form-field">
+                <label for="full_name">Full name</label>
+                <input type="text" id="full_name" name="full_name" class="form-input" autocomplete="name" required>
+            </div>
+            <div class="form-field">
+                <label for="phone">Phone <span style="color: var(--text-muted); font-weight: 400;">(optional)</span></label>
+                <input type="tel" id="phone" name="phone" class="form-input" placeholder="(305) 555-0123" autocomplete="tel-national">
+                <div class="form-help">Add it now if you'd like SMS sign-in once that's available — or skip and add it later in settings.</div>
+            </div>
+            <label class="form-checkbox">
+                <input type="checkbox" name="agree" id="agree" required>
+                <span>I agree to the <a href="/terms" target="_blank">Terms of Service</a> and <a href="/privacy" target="_blank">Privacy Policy</a>.</span>
+            </label>
+            <button type="submit" class="btn btn-primary btn-full" id="profile-submit">Continue to Videoscriber</button>
+        </form>
+        {% else %}
+        {# Phone-mode signup: we have phone; collect name + email. #}
+        <form id="profile-form" autocomplete="on" data-mode="phone">
             <div class="form-field">
                 <label for="full_name">Full name</label>
                 <input type="text" id="full_name" name="full_name" class="form-input" autocomplete="name" required>
@@ -23,6 +44,7 @@
             </label>
             <button type="submit" class="btn btn-primary btn-full" id="profile-submit">Continue to Videoscriber</button>
         </form>
+        {% endif %}
     </div>
 </div>
 {% endblock %}
@@ -32,6 +54,8 @@
     const form = document.getElementById('profile-form');
     const error = document.getElementById('profile-error');
     const submit = document.getElementById('profile-submit');
+    const mode = form.dataset.mode; // 'email' or 'phone'
+
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
         error.textContent = ''; error.classList.remove('active');
@@ -39,10 +63,17 @@
         try {
             const body = new URLSearchParams({
                 full_name: form.full_name.value,
-                email: form.email.value,
                 agree: form.agree.checked ? 'on' : '',
             });
-            const res = await fetch('/auth/complete-profile', {
+            let endpoint;
+            if (mode === 'email') {
+                if (form.phone && form.phone.value.trim()) body.append('phone', form.phone.value.trim());
+                endpoint = '/auth/complete-profile-email';
+            } else {
+                body.append('email', form.email.value);
+                endpoint = '/auth/complete-profile';
+            }
+            const res = await fetch(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body,

@@ -10,6 +10,11 @@ from urllib.parse import quote
 
 import uvicorn
 from dotenv import load_dotenv
+
+# Load .env BEFORE importing our own modules — several of them read env vars
+# at import time (e.g. auth_routes.AUTH_MODE, sms/email service flags).
+load_dotenv()
+
 from fastapi import Depends, FastAPI, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -20,8 +25,6 @@ import auth
 import auth_routes
 import database as db
 from transcriber import process_transcription
-
-load_dotenv()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "1000"))

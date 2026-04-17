@@ -89,6 +89,27 @@ async def get_user_by_phone(phone: str) -> dict | None:
             return dict(row) if row else None
 
 
+async def get_user_by_email(email: str) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM users WHERE email = ?", (email,)) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+
+async def create_user_email_only(email: str) -> dict:
+    """Create a user identified by email (phone optional, added later)."""
+    user_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO users (id, email, created_at) VALUES (?, ?, ?)",
+            (user_id, email, now),
+        )
+        await db.commit()
+    return {"id": user_id, "email": email, "created_at": now}
+
+
 async def get_user(user_id: str) -> dict | None:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -121,6 +142,36 @@ async def update_user_profile(user_id: str, full_name: str, email: str) -> None:
             "WHERE id = ?",
             (full_name, email, now, now, TOS_VERSION, now, PRIVACY_VERSION, user_id),
         )
+        await db.commit()
+
+
+async def complete_email_profile(user_id: str, full_name: str, phone: str | None) -> None:
+    """Finish profile for an email-mode signup (name + optional phone + consents).
+    Email is already set on the user record from the signin step."""
+    now = datetime.now(timezone.utc).isoformat()
+    set_phone = phone is not None and phone != ""
+    if set_phone:
+        sql = (
+            "UPDATE users SET full_name = ?, phone = ?, profile_completed_at = ?, "
+            "consented_tos_at = COALESCE(consented_tos_at, ?), "
+            "consented_tos_version = COALESCE(consented_tos_version, ?), "
+            "consented_privacy_at = COALESCE(consented_privacy_at, ?), "
+            "consented_privacy_version = COALESCE(consented_privacy_version, ?) "
+            "WHERE id = ?"
+        )
+        values = (full_name, phone, now, now, TOS_VERSION, now, PRIVACY_VERSION, user_id)
+    else:
+        sql = (
+            "UPDATE users SET full_name = ?, profile_completed_at = ?, "
+            "consented_tos_at = COALESCE(consented_tos_at, ?), "
+            "consented_tos_version = COALESCE(consented_tos_version, ?), "
+            "consented_privacy_at = COALESCE(consented_privacy_at, ?), "
+            "consented_privacy_version = COALESCE(consented_privacy_version, ?) "
+            "WHERE id = ?"
+        )
+        values = (full_name, now, now, TOS_VERSION, now, PRIVACY_VERSION, user_id)
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(sql, values)
         await db.commit()
 
 
@@ -191,6 +242,65 @@ async def create_email_otp(phone: str, email: str) -> str:
         )
         await db.commit()
     return code
+
+
+async def create_email_signin_otp(email: str) -> str:
+    """Generate an email OTP keyed by email only (for AUTH_MODE=email signin)."""
+    code = generate_otp_code()
+    code_h = hash_code(code)
+    now = datetime.now(timezone.utc)
+    expires = now + timedelta(minutes=EMAIL_OTP_TTL_MINUTES)
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE email_signin_codes SET used_at = ? WHERE email = ? AND used_at IS NULL",
+            (now.isoformat(), email),
+        )
+        await db.execute(
+            "INSERT INTO email_signin_codes (email, code_hash, expires_at, created_at) "
+            "VALUES (?, ?, ?, ?)",
+            (email, code_h, expires.isoformat(), now.isoformat()),
+        )
+        await db.commit()
+    return code
+
+
+async def verify_email_signin_otp(email: str, code: str) -> bool:
+    code_h = hash_code(code)
+    now = datetime.now(timezone.utc).isoformat()
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT id, attempts FROM email_signin_codes "
+            "WHERE email = ? AND used_at IS NULL AND expires_at > ? "
+            "ORDER BY id DESC LIMIT 1",
+            (email, now),
+        ) as cur:
+            row = await cur.fetchone()
+        if not row:
+            return False
+        if row["attempts"] >= EMAIL_OTP_MAX_ATTEMPTS:
+            await db.execute("UPDATE email_signin_codes SET used_at = ? WHERE id = ?", (now, row["id"]))
+            await db.commit()
+            return False
+        async with db.execute(
+            "SELECT 1 FROM email_signin_codes WHERE id = ? AND code_hash = ?",
+            (row["id"], code_h),
+        ) as cur:
+            match = await cur.fetchone()
+        if match:
+            await db.execute(
+                "UPDATE email_signin_codes SET used_at = ?, attempts = attempts + 1 WHERE id = ?",
+                (now, row["id"]),
+            )
+            await db.commit()
+            return True
+        else:
+            await db.execute(
+                "UPDATE email_signin_codes SET attempts = attempts + 1 WHERE id = ?",
+                (row["id"],),
+            )
+            await db.commit()
+            return False
 
 
 async def verify_email_otp(phone: str, code: str) -> bool:

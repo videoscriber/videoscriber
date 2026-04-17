@@ -21,6 +21,9 @@ _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 # Cookie defaults — HTTPS-only in prod, relaxed in dev
 _COOKIE_SECURE = os.getenv("AUTH_COOKIE_SECURE", "true").lower() != "false"
 
+# Auth channel: "sms" (production with Twilio) or "email" (beta while A2P 10DLC pending).
+AUTH_MODE = os.getenv("AUTH_MODE", "sms").lower()
+
 
 def _mask_phone(e164: str) -> str:
     """Mask all but last 4 digits for UX: +15551234567 → +1 (•••) •••-4567."""
@@ -58,12 +61,17 @@ def _clear_session_cookie(response) -> None:
 
 # ----- Page renderers (unauthenticated) -------------------------------------
 
+def _auth_template() -> str:
+    """Pick the login/signup template based on the configured auth channel."""
+    return "auth/login_email.html" if AUTH_MODE == "email" else "auth/login.html"
+
+
 @router.get("/login")
 async def login_page(request: Request):
     user = await auth.current_user(request)
     if user:
         return RedirectResponse("/app", status_code=303)
-    return templates.TemplateResponse(request, "auth/login.html", {"mode": "login"})
+    return templates.TemplateResponse(request, _auth_template(), {"mode": "login"})
 
 
 @router.get("/signup")
@@ -71,7 +79,7 @@ async def signup_page(request: Request):
     user = await auth.current_user(request)
     if user:
         return RedirectResponse("/app", status_code=303)
-    return templates.TemplateResponse(request, "auth/login.html", {"mode": "signup"})
+    return templates.TemplateResponse(request, _auth_template(), {"mode": "signup"})
 
 
 # ----- API: send/verify SMS OTP ---------------------------------------------
@@ -200,6 +208,72 @@ async def complete_profile(
     if agree != "on":
         raise HTTPException(400, "You must agree to the Terms and Privacy Policy to continue")
     await auth.update_user_profile(user["user_id"], full_name, email)
+    return {"ok": True, "next": "/app"}
+
+
+# ----- Email-primary signin (beta; activate with AUTH_MODE=email) ----------
+
+@router.post("/auth/email-signin/send")
+async def email_signin_send(request: Request, email: str = Form(...)):
+    email = email.strip().lower()
+    if not _EMAIL_RE.match(email) or len(email) > 254:
+        raise HTTPException(400, "Please enter a valid email address")
+    ip = request.client.host if request.client else "unknown"
+    await auth.check_and_record_rate(email, "send", auth.OTP_SEND_RATE)
+    await auth.check_and_record_rate(f"ip:{ip}", "send", auth.OTP_SEND_RATE)
+    code = await auth.create_email_signin_otp(email)
+    await email_service.send_email_signin_code(email, code)
+    return {"ok": True, "email_masked": _mask_email(email)}
+
+
+@router.post("/auth/email-signin/verify")
+async def email_signin_verify(request: Request, email: str = Form(...), code: str = Form(...)):
+    email = email.strip().lower()
+    if not _EMAIL_RE.match(email):
+        raise HTTPException(400, "Invalid email")
+    ip = request.client.host if request.client else "unknown"
+    await auth.check_and_record_rate(email, "verify", auth.OTP_VERIFY_RATE)
+    await auth.check_and_record_rate(f"ip:{ip}", "verify", auth.OTP_VERIFY_RATE)
+
+    code = re.sub(r"\D", "", code or "")
+    if len(code) != 6:
+        raise HTTPException(400, "Enter the 6-digit code")
+    if not await auth.verify_email_signin_otp(email, code):
+        raise HTTPException(400, "Incorrect or expired code")
+
+    user = await auth.get_user_by_email(email)
+    if not user:
+        user = await auth.create_user_email_only(email)
+    await auth.mark_login(user["id"])
+
+    token = await auth.create_session(
+        user["id"], ip=ip, ua=request.headers.get("user-agent", "")[:500]
+    )
+    needs_profile = not user.get("full_name")
+    response = JSONResponse({"ok": True, "next": "/signup/profile" if needs_profile else "/app"})
+    _set_session_cookie(response, token)
+    return response
+
+
+@router.post("/auth/complete-profile-email")
+async def complete_profile_email(
+    request: Request,
+    full_name: str = Form(...),
+    phone: str = Form(default=""),
+    agree: str = Form(default=""),
+):
+    user = await auth.current_user(request)
+    if not user:
+        raise HTTPException(401, "Not signed in")
+    full_name = full_name.strip()
+    if not full_name or len(full_name) > 120:
+        raise HTTPException(400, "Please enter your full name")
+    normalized_phone: str | None = None
+    if phone and phone.strip():
+        normalized_phone = auth.normalize_phone_us(phone)
+    if agree != "on":
+        raise HTTPException(400, "You must agree to the Terms and Privacy Policy to continue")
+    await auth.complete_email_profile(user["user_id"], full_name, normalized_phone)
     return {"ok": True, "next": "/app"}
 
 
