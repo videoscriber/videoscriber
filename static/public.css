@@ -29,6 +29,35 @@
     backdrop-filter: blur(12px);
     z-index: 10;
 }
+/* Desktop (Electron) window: macOS hidden-inset title bar leaves traffic
+   lights floating at top-left. Clear them, and make the whole header a
+   drag region so users can move the window. Interactive elements opt out. */
+.is-desktop .public-header {
+    padding-left: 96px;
+    -webkit-app-region: drag;
+    app-region: drag;
+}
+.is-desktop .public-header a,
+.is-desktop .public-header button,
+.is-desktop .public-header input,
+.is-desktop .public-header select {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+}
+/* Same treatment for the logged-in app's topbar (index.html). */
+.is-desktop .topbar {
+    padding-left: 96px;
+    -webkit-app-region: drag;
+    app-region: drag;
+}
+.is-desktop .topbar a,
+.is-desktop .topbar button,
+.is-desktop .topbar input,
+.is-desktop .topbar select,
+.is-desktop .topbar textarea {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
+}
 .public-brand {
     color: var(--text);
     text-decoration: none;
