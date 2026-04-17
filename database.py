@@ -302,6 +302,19 @@ def _is_playable_mp4(path) -> bool:
         return False
 
 
+def _cleanup_tmp_files(upload_dir) -> int:
+    """Remove any leftover `.tmp` files from interrupted ffmpeg runs."""
+    import pathlib
+    count = 0
+    for p in pathlib.Path(upload_dir).glob("*.tmp"):
+        try:
+            p.unlink()
+            count += 1
+        except Exception:
+            pass
+    return count
+
+
 async def recover_orphaned_video_paths(upload_dir: str) -> int:
     """Heal transcriptions that finished (status='done') but whose post-processing
     was interrupted: the video file may sit on disk but video_path in the DB is

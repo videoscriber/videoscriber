@@ -28,8 +28,32 @@ async def get_duration(file_path: Path) -> float:
     return float(info["format"]["duration"])
 
 
+async def _run_ffmpeg(args: list[str]) -> tuple[int, bytes]:
+    """Run ffmpeg. If we're cancelled, terminate the subprocess cleanly so it
+    doesn't keep running as an orphan and trashing its output file."""
+    proc = await asyncio.create_subprocess_exec(
+        *args,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        _, stderr = await proc.communicate()
+        return proc.returncode, stderr
+    except asyncio.CancelledError:
+        proc.terminate()
+        try:
+            await asyncio.wait_for(proc.wait(), timeout=5)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+        raise
+
+
 async def enhance_video(input_path: Path, output_path: Path) -> bool:
-    """Enhance video quality using hardware-accelerated encoding on macOS."""
+    """Enhance video quality. Writes to a .tmp path and atomically renames on
+    success so an interrupted ffmpeg can never leave a corrupt final file."""
+    tmp_path = output_path.with_suffix(output_path.suffix + ".tmp")
+    tmp_path.unlink(missing_ok=True)
     try:
         filtergraph = (
             "hqdn3d=3:2:3:2,"
@@ -37,46 +61,49 @@ async def enhance_video(input_path: Path, output_path: Path) -> bool:
             "eq=brightness=0.03:contrast=1.03:saturation=1.08"
         )
 
-        # Try hardware-accelerated encoding first (Apple VideoToolbox — ~10-20x faster)
-        proc = await asyncio.create_subprocess_exec(
+        # Hardware-accelerated encoding first (Apple VideoToolbox — ~10-20x faster)
+        rc, stderr = await _run_ffmpeg([
             "ffmpeg", "-i", str(input_path),
             "-vf", filtergraph,
-            "-c:v", "h264_videotoolbox", "-q:v", "65",  # Hardware encoder, quality 0-100
+            "-c:v", "h264_videotoolbox", "-q:v", "65",
             "-c:a", "copy",
             "-movflags", "+faststart",
-            str(output_path), "-y",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        _, stderr = await proc.communicate()
+            str(tmp_path), "-y",
+        ])
 
         # Fall back to software encoding if hardware fails
-        if proc.returncode != 0:
+        if rc != 0:
             logger.info("Hardware encoding unavailable, falling back to software")
-            proc = await asyncio.create_subprocess_exec(
+            tmp_path.unlink(missing_ok=True)
+            rc, stderr = await _run_ffmpeg([
                 "ffmpeg", "-i", str(input_path),
                 "-vf", filtergraph,
                 "-c:v", "libx264", "-preset", "fast", "-crf", "20",
                 "-c:a", "copy",
                 "-movflags", "+faststart",
-                str(output_path), "-y",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            _, stderr = await proc.communicate()
+                str(tmp_path), "-y",
+            ])
 
-        if proc.returncode != 0:
+        if rc != 0:
             logger.warning("Video enhancement failed: %s", stderr.decode()[-500:])
+            tmp_path.unlink(missing_ok=True)
             return False
 
-        if output_path.stat().st_size > 0:
+        if tmp_path.exists() and tmp_path.stat().st_size > 0:
+            # Atomic rename — the final file only ever appears when ffmpeg
+            # finished writing and the moov atom is in place.
+            tmp_path.replace(output_path)
             return True
         else:
-            output_path.unlink(missing_ok=True)
+            tmp_path.unlink(missing_ok=True)
             return False
 
+    except asyncio.CancelledError:
+        tmp_path.unlink(missing_ok=True)
+        raise
     except Exception as e:
         logger.warning("Video enhancement failed (non-fatal): %s", e)
+        tmp_path.unlink(missing_ok=True)
         return False
 
 

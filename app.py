@@ -74,6 +74,15 @@ def _require_owner(record: dict | None, user: dict) -> dict:
     return record
 
 
+# Track in-flight transcription tasks so graceful shutdown can wait on them.
+_inflight_transcriptions: set[asyncio.Task] = set()
+
+
+def _track_transcription(task: asyncio.Task) -> None:
+    _inflight_transcriptions.add(task)
+    task.add_done_callback(_inflight_transcriptions.discard)
+
+
 async def _sweep_free_tier_retention() -> int:
     """Delete free-plan transcriptions older than FREE_RETENTION_DAYS.
     Also cleans up stored video files. Returns the number deleted."""
@@ -143,6 +152,13 @@ async def lifespan(app: FastAPI):
     AUDIO_DIR.mkdir(exist_ok=True)
 
     await db.init_db()
+    # Sweep any `.tmp` files left over from an interrupted ffmpeg run.
+    try:
+        removed = db._cleanup_tmp_files(str(UPLOAD_DIR))
+        if removed:
+            logger.info("Cleaned up %d leftover .tmp file(s)", removed)
+    except Exception as e:
+        logger.warning("Tmp-file cleanup failed: %s", e)
     # Heal transcriptions whose post-processing was interrupted (file on disk,
     # video_path NULL in DB). Happens during local uvicorn --reload cycles.
     try:
@@ -161,6 +177,26 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        # Graceful shutdown: give in-flight transcriptions up to GRACEFUL_SHUTDOWN_S
+        # to finish (so ffmpeg finalises its moov atom and atomic renames land).
+        # Anything still running after that is cancelled; startup recovery + the
+        # atomic-write rename in enhance_video handle the leftovers safely.
+        graceful_s = int(os.getenv("GRACEFUL_SHUTDOWN_S", "60"))
+        if _inflight_transcriptions and graceful_s > 0:
+            pending = list(_inflight_transcriptions)
+            logger.info("Waiting up to %ds for %d in-flight transcription(s)...",
+                        graceful_s, len(pending))
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*pending, return_exceptions=True),
+                    timeout=graceful_s,
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Graceful deadline hit; cancelling %d job(s)",
+                               len(_inflight_transcriptions))
+                for t in list(_inflight_transcriptions):
+                    t.cancel()
+                await asyncio.gather(*_inflight_transcriptions, return_exceptions=True)
         retention_task.cancel()
 
 
@@ -327,7 +363,7 @@ async def upload_video(
                 f"Upgrade to remove the limit.",
             )
 
-        asyncio.create_task(_run_with_semaphore(job_id, save_path, use_diarize))
+        _track_transcription(asyncio.create_task(_run_with_semaphore(job_id, save_path, use_diarize)))
         results.append({"id": job_id, "status": "pending"})
 
     return results
@@ -477,7 +513,7 @@ async def retry_transcription(job_id: str, user: dict = Depends(auth.require_use
     )
 
     video_path = Path(record["video_path"])
-    asyncio.create_task(_run_with_semaphore(job_id, video_path))
+    _track_transcription(asyncio.create_task(_run_with_semaphore(job_id, video_path)))
 
     return {"id": job_id, "status": "pending"}
 
