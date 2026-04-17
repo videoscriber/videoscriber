@@ -121,6 +121,16 @@ async def app_home(request: Request):
     return templates.TemplateResponse(request, "index.html", {"user": user})
 
 
+@app.get("/app/settings", response_class=HTMLResponse)
+async def settings_page(request: Request):
+    user = await auth.current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    if not user.get("profile_completed_at"):
+        return RedirectResponse("/signup/profile", status_code=303)
+    return templates.TemplateResponse(request, "settings.html", {"user": user})
+
+
 @app.get("/terms", response_class=HTMLResponse)
 async def terms_page(request: Request):
     return templates.TemplateResponse(request, "legal/terms.html")

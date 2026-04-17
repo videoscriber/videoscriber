@@ -203,6 +203,27 @@ async def complete_profile(
     return {"ok": True, "next": "/app"}
 
 
+# ----- Profile update (from settings page) ----------------------------------
+
+@router.patch("/auth/profile")
+async def update_profile(
+    request: Request,
+    full_name: str = Form(...),
+    email: str = Form(...),
+):
+    user = await auth.current_user(request)
+    if not user:
+        raise HTTPException(401, "Not signed in")
+    full_name = full_name.strip()
+    email = email.strip().lower()
+    if not full_name or len(full_name) > 120:
+        raise HTTPException(400, "Please enter your full name")
+    if not _EMAIL_RE.match(email) or len(email) > 254:
+        raise HTTPException(400, "Please enter a valid email address")
+    await auth.update_user_profile(user["user_id"], full_name, email)
+    return {"ok": True}
+
+
 # ----- Logout ---------------------------------------------------------------
 
 @router.post("/auth/logout")

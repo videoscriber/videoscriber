@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings — Videoscriber</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/components.css">
+    <link rel="stylesheet" href="/static/public.css">
+</head>
+<body class="public-body">
+<div class="settings-wrapper">
+    <div class="settings-topbar">
+        <a href="/app" class="settings-back" aria-label="Back to Videoscriber">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+            Back
+        </a>
+        <h1 class="settings-title">Settings</h1>
+    </div>
+
+    <div class="settings-success" id="profile-success">Profile updated</div>
+
+    <section class="settings-section">
+        <h2>Profile</h2>
+        <p class="section-sub">Update how we address you and where to send your recap drafts.</p>
+        <div class="form-error" id="profile-error"></div>
+        <form id="profile-form">
+            <div class="form-field">
+                <label for="full_name">Full name</label>
+                <input type="text" id="full_name" name="full_name" class="form-input" value="{{ user.full_name or '' }}" required>
+            </div>
+            <div class="form-field">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" class="form-input" value="{{ user.email or '' }}" required>
+            </div>
+            <div class="settings-save">
+                <button type="submit" class="btn btn-primary" id="profile-submit">Save changes</button>
+            </div>
+        </form>
+    </section>
+
+    <section class="settings-section">
+        <h2>Account</h2>
+        <p class="section-sub">Read-only details about your account. Phone number is the primary identifier for sign-in.</p>
+        <div class="readonly-row"><span class="label">Phone</span><span class="value">{{ user.phone }}</span></div>
+        <div class="readonly-row"><span class="label">Account ID</span><span class="value">{{ user.user_id[:8] }}…</span></div>
+    </section>
+
+    <section class="settings-section">
+        <h2>Sign out</h2>
+        <p class="section-sub">End your session on this device. You'll need to verify your phone again to get back in.</p>
+        <div class="settings-danger-row">
+            <div class="copy">
+                <div class="title">Log out</div>
+                <div class="desc">Clears your session cookie immediately.</div>
+            </div>
+            <form method="POST" action="/auth/logout" style="margin:0">
+                <button type="submit" class="btn-danger">Log out</button>
+            </form>
+        </div>
+    </section>
+
+    <section class="settings-section">
+        <h2>Delete account</h2>
+        <p class="section-sub">
+            To permanently delete your account and all associated data, email
+            <a href="mailto:legal@videoscriber.ai?subject=Account%20deletion%20request">legal@videoscriber.ai</a>
+            from your account email. We'll confirm and process within 30 days.
+        </p>
+    </section>
+</div>
+<script>
+(() => {
+    const form = document.getElementById('profile-form');
+    const err = document.getElementById('profile-error');
+    const ok = document.getElementById('profile-success');
+    const submit = document.getElementById('profile-submit');
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        err.textContent = ''; err.classList.remove('active');
+        ok.classList.remove('active');
+        submit.disabled = true; submit.textContent = 'Saving…';
+        try {
+            const body = new URLSearchParams({
+                full_name: form.full_name.value,
+                email: form.email.value,
+            });
+            const res = await fetch('/auth/profile', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body,
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.detail || data.error || 'Save failed');
+            ok.classList.add('active');
+            setTimeout(() => ok.classList.remove('active'), 3000);
+        } catch (e) {
+            err.textContent = e.message; err.classList.add('active');
+        } finally {
+            submit.disabled = false; submit.textContent = 'Save changes';
+        }
+    });
+})();
+</script>
+</body>
+</html>
