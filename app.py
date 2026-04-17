@@ -16,18 +16,18 @@ from dotenv import load_dotenv
 # at import time (e.g. auth_routes.AUTH_MODE, sms/email service flags).
 load_dotenv()
 
-from fastapi import Depends, FastAPI, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-from starlette.requests import Request
+from fastapi import Depends, FastAPI, Form, HTTPException, UploadFile  # noqa: E402
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+from fastapi.templating import Jinja2Templates  # noqa: E402
+from starlette.requests import Request  # noqa: E402
 
-import auth
-import auth_routes
-import chat_routes
-import database as db
-import domain_routes
-from transcriber import process_transcription
+import auth  # noqa: E402
+import auth_routes  # noqa: E402
+import chat_routes  # noqa: E402
+import database as db  # noqa: E402
+import domain_routes  # noqa: E402
+from transcriber import process_transcription  # noqa: E402
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "1000"))
@@ -661,7 +661,7 @@ async def rename_speakers(job_id: str, request: Request, user: dict = Depends(au
 
 @app.patch("/api/transcriptions/{job_id}")
 async def rename_transcription(job_id: str, filename: str = Form(...), user: dict = Depends(auth.require_user)):
-    record = _require_owner(await db.get_transcription(job_id), user)
+    _require_owner(await db.get_transcription(job_id), user)
     clean = _safe_filename(filename)
     if not clean:
         raise HTTPException(400, "Filename cannot be empty")
@@ -712,7 +712,7 @@ async def search_transcriptions(q: str = "", user: dict = Depends(auth.require_u
 
 @app.post("/api/transcriptions/{job_id}/video")
 async def upload_video_preview(job_id: str, file: UploadFile, user: dict = Depends(auth.require_user)):
-    record = _require_owner(await db.get_transcription(job_id), user)
+    _require_owner(await db.get_transcription(job_id), user)
 
     ext = Path(file.filename).suffix.lower() if file.filename else ".mp4"
     if ext not in VIDEO_PREVIEW_EXTENSIONS:
