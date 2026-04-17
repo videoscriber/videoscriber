@@ -247,6 +247,83 @@ async def create_transcription(id: str, filename: str, file_size: int, user_id: 
         await db.commit()
 
 
+async def try_create_transcription_atomic(
+    id: str,
+    user_id: str,
+    filename: str,
+    file_size: int,
+    monthly_limit: int | None,
+    window_since_iso: str | None,
+) -> bool:
+    """Atomically check usage and insert. Returns False if the user is at/above
+    their monthly limit. All concurrent callers serialize at BEGIN IMMEDIATE,
+    so races across parallel uploads cannot overshoot the limit."""
+    now = datetime.now(timezone.utc).isoformat()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            if monthly_limit is not None and window_since_iso is not None:
+                async with db.execute(
+                    "SELECT COUNT(*) FROM transcriptions "
+                    "WHERE user_id = ? AND created_at >= ?",
+                    (user_id, window_since_iso),
+                ) as cur:
+                    (count,) = await cur.fetchone()
+                if count >= monthly_limit:
+                    await db.rollback()
+                    return False
+            await db.execute(
+                "INSERT INTO transcriptions (id, user_id, filename, file_size, status, progress, created_at) "
+                "VALUES (?, ?, ?, ?, 'pending', 0, ?)",
+                (id, user_id, filename, file_size, now),
+            )
+            await db.commit()
+            return True
+        except Exception:
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+            raise
+
+
+async def recover_orphaned_video_paths(upload_dir: str) -> int:
+    """Heal transcriptions that finished (status='done') but whose post-processing
+    was interrupted: the enhanced video file sits on disk, but video_path in the
+    DB is NULL. Returns how many rows were repaired."""
+    import pathlib
+    up = pathlib.Path(upload_dir)
+    if not up.exists():
+        return 0
+    repaired = 0
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT id FROM transcriptions WHERE status = 'done' AND video_path IS NULL"
+        ) as cur:
+            rows = [dict(r) for r in await cur.fetchall()]
+        for row in rows:
+            jid = row["id"]
+            enhanced = up / f"{jid}_enhanced.mp4"
+            original = up / f"{jid}.mp4"
+            if enhanced.exists():
+                path = str(enhanced)
+                status = "ok"
+            elif original.exists():
+                path = str(original)
+                status = "skipped"
+            else:
+                continue
+            await db.execute(
+                "UPDATE transcriptions SET video_path = ?, enhancement_status = COALESCE(enhancement_status, ?) WHERE id = ?",
+                (path, status, jid),
+            )
+            repaired += 1
+        if repaired:
+            await db.commit()
+    return repaired
+
+
 async def count_transcriptions_since(user_id: str, since_iso: str) -> int:
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute(

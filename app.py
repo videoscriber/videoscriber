@@ -143,6 +143,14 @@ async def lifespan(app: FastAPI):
     AUDIO_DIR.mkdir(exist_ok=True)
 
     await db.init_db()
+    # Heal transcriptions whose post-processing was interrupted (file on disk,
+    # video_path NULL in DB). Happens during local uvicorn --reload cycles.
+    try:
+        repaired = await db.recover_orphaned_video_paths(str(UPLOAD_DIR))
+        if repaired:
+            logger.info("Recovered video_path for %d orphaned transcription(s)", repaired)
+    except Exception as e:
+        logger.warning("Orphaned video-path recovery failed: %s", e)
     # Run retention sweep immediately, then hourly in background
     try:
         await _sweep_free_tier_retention()
@@ -276,17 +284,7 @@ async def upload_video(
     plan = user.get("plan") or "free"
     limits = _plan_limits(plan)
     max_bytes = limits["max_file_mb"] * 1024 * 1024
-
-    # Enforce the monthly limit BEFORE accepting bytes (applies to free tier only)
-    if limits["monthly_limit"] is not None:
-        used = await _usage_count(user["user_id"])
-        remaining = limits["monthly_limit"] - used - len(files)
-        if used >= limits["monthly_limit"] or remaining < 0:
-            raise HTTPException(
-                402,
-                f"Free plan allows {limits['monthly_limit']} transcriptions per {USAGE_WINDOW_DAYS} days. "
-                f"Upgrade to remove the limit.",
-            )
+    window_since_iso = (datetime.now(timezone.utc) - timedelta(days=USAGE_WINDOW_DAYS)).isoformat()
 
     results = []
     for file in files:
@@ -312,7 +310,23 @@ async def upload_video(
                     )
                 f.write(chunk)
 
-        await db.create_transcription(job_id, file.filename, size, user_id=user["user_id"])
+        # Atomic limit check + insert — serializes across parallel uploads
+        reserved = await db.try_create_transcription_atomic(
+            job_id,
+            user["user_id"],
+            file.filename,
+            size,
+            limits["monthly_limit"],
+            window_since_iso if limits["monthly_limit"] is not None else None,
+        )
+        if not reserved:
+            save_path.unlink(missing_ok=True)
+            raise HTTPException(
+                402,
+                f"Free plan allows {limits['monthly_limit']} transcriptions per {USAGE_WINDOW_DAYS} days. "
+                f"Upgrade to remove the limit.",
+            )
+
         asyncio.create_task(_run_with_semaphore(job_id, save_path, use_diarize))
         results.append({"id": job_id, "status": "pending"})
 
