@@ -397,3 +397,69 @@
   max-width: 500px;
   word-break: break-word;
 }
+
+/* ============================================
+   SPEAKER RENAME BAR (above transcript segments)
+   ============================================ */
+.speakers-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 0 20px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+}
+.speakers-bar-label {
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    font-weight: 500;
+    margin-right: 4px;
+}
+.speaker-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px 4px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.03);
+    transition: border-color 180ms ease, background 180ms ease;
+}
+.speaker-chip:focus-within {
+    border-color: var(--border-accent, rgba(167, 139, 250, 0.4));
+    background: rgba(167, 139, 250, 0.06);
+}
+.speaker-chip.saving { opacity: 0.6; }
+.speaker-chip.saved { border-color: rgba(52, 211, 153, 0.4); background: rgba(52, 211, 153, 0.06); }
+.speaker-chip.error { border-color: rgba(248, 113, 113, 0.5); background: rgba(248, 113, 113, 0.06); }
+.speaker-chip-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: currentColor;
+}
+.speaker-chip input {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 0;
+    min-width: 80px;
+    width: auto;
+    field-sizing: content;
+}
+/* Per-speaker accent colors for the dot (matches existing segment speaker palette) */
+.speaker-chip.speaker-0 { color: #a78bfa; }
+.speaker-chip.speaker-1 { color: #6ee7b7; }
+.speaker-chip.speaker-2 { color: #fbbf24; }
+.speaker-chip.speaker-3 { color: #f87171; }
+.speaker-chip.speaker-4 { color: #60a5fa; }
+.speaker-chip.speaker-5 { color: #f472b6; }
+.speaker-chip.speaker-6 { color: #34d399; }
+.speaker-chip.speaker-7 { color: #c084fc; }

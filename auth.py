@@ -206,7 +206,9 @@ async def get_session(token: str) -> dict | None:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT s.*, u.id AS user_id, u.phone, u.full_name, u.email, u.profile_completed_at, u.disabled_at "
+            "SELECT s.*, u.id AS user_id, u.phone, u.full_name, u.email, u.profile_completed_at, "
+            "u.disabled_at, u.plan, u.stripe_customer_id, u.stripe_payment_method_id, "
+            "u.custom_email_domain "
             "FROM sessions s JOIN users u ON u.id = s.user_id "
             "WHERE s.token = ? AND s.expires_at > ? AND u.disabled_at IS NULL",
             (token, datetime.now(timezone.utc).isoformat()),

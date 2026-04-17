@@ -370,6 +370,60 @@ async def vtt_inline(job_id: str, user: dict = Depends(auth.require_user)):
     )
 
 
+@app.patch("/api/transcriptions/{job_id}/speakers")
+async def rename_speakers(job_id: str, request: Request, user: dict = Depends(auth.require_user)):
+    """Rename speaker labels across all segments. Body: {"mapping": {"Speaker A": "Pete", ...}}"""
+    import json as _json
+    from transcriber import generate_srt, generate_vtt
+
+    record = _require_owner(await db.get_transcription(job_id), user)
+    if not record.get("transcript_segments_json"):
+        raise HTTPException(400, "Transcription has no segments to rename")
+
+    body = await request.json()
+    mapping = body.get("mapping") or {}
+    if not isinstance(mapping, dict) or not mapping:
+        raise HTTPException(400, "mapping must be a non-empty object")
+
+    # Sanity: cap name length, reject CR/LF
+    clean: dict[str, str] = {}
+    for old, new in mapping.items():
+        if not isinstance(old, str) or not isinstance(new, str):
+            continue
+        new = new.strip()
+        if not new:
+            continue
+        if "\r" in new or "\n" in new or len(new) > 80:
+            raise HTTPException(400, "Speaker names must be ≤80 chars and without line breaks")
+        clean[old] = new
+    if not clean:
+        raise HTTPException(400, "No valid renames in mapping")
+
+    try:
+        segments = _json.loads(record["transcript_segments_json"]) or []
+    except Exception:
+        raise HTTPException(500, "Stored segments are corrupt")
+
+    changed = 0
+    for seg in segments:
+        label = seg.get("speaker")
+        if label and label in clean:
+            seg["speaker"] = clean[label]
+            changed += 1
+
+    new_segments_json = _json.dumps(segments)
+    new_srt = generate_srt(segments)
+    new_vtt = generate_vtt(segments)
+
+    await db.update_transcription(
+        job_id,
+        transcript_segments_json=new_segments_json,
+        transcript_srt=new_srt,
+        transcript_vtt=new_vtt,
+    )
+    return {"ok": True, "segments_updated": changed, "mapping": clean}
+
+
 @app.patch("/api/transcriptions/{job_id}")
 async def rename_transcription(job_id: str, filename: str = Form(...), user: dict = Depends(auth.require_user)):
     record = _require_owner(await db.get_transcription(job_id), user)
