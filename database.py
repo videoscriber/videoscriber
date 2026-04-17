@@ -51,6 +51,8 @@ CREATE TABLE IF NOT EXISTS users (
     stripe_payment_method_id TEXT,
     plan_activated_at TEXT,
     custom_email_domain TEXT,
+    custom_email_domain_id TEXT,
+    custom_email_domain_status TEXT,
     email_signature TEXT,
     email_branding_hidden INTEGER DEFAULT 0
 );
@@ -160,6 +162,8 @@ USER_MIGRATION_COLUMNS = [
     ("stripe_payment_method_id", "TEXT"),
     ("plan_activated_at", "TEXT"),
     ("custom_email_domain", "TEXT"),
+    ("custom_email_domain_id", "TEXT"),
+    ("custom_email_domain_status", "TEXT"),
     ("email_signature", "TEXT"),
     ("email_branding_hidden", "INTEGER DEFAULT 0"),
 ]

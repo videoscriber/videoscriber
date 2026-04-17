@@ -26,6 +26,7 @@ import auth
 import auth_routes
 import chat_routes
 import database as db
+import domain_routes
 from transcriber import process_transcription
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -205,6 +206,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 app.include_router(auth_routes.router)
 app.include_router(chat_routes.router)
+app.include_router(domain_routes.router)
 
 
 @app.middleware("http")

@@ -477,6 +477,86 @@
 }
 .btn-danger:hover { background: rgba(248, 113, 113, 0.2); border-color: rgba(248, 113, 113, 0.5); }
 
+.status-chip {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    border: 1px solid transparent;
+    background: rgba(255,255,255,0.06);
+    color: var(--text-secondary);
+}
+.status-chip.status-verified {
+    color: var(--success, #34d399);
+    background: rgba(52, 211, 153, 0.1);
+    border-color: rgba(52, 211, 153, 0.3);
+}
+.status-chip.status-pending,
+.status-chip.status-not_started,
+.status-chip.status-temporary_failure {
+    color: #f59e0b;
+    background: rgba(245, 158, 11, 0.1);
+    border-color: rgba(245, 158, 11, 0.3);
+}
+.status-chip.status-failed {
+    color: var(--error, #f87171);
+    background: rgba(248, 113, 113, 0.1);
+    border-color: rgba(248, 113, 113, 0.3);
+}
+
+.dns-records-wrap {
+    overflow-x: auto;
+    margin-top: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+.dns-records {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+.dns-records th, .dns-records td {
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+}
+.dns-records thead th {
+    font-family: var(--font);
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    background: rgba(255,255,255,0.02);
+}
+.dns-records tbody tr:last-child td { border-bottom: none; }
+.dns-records code {
+    color: var(--text);
+    font-size: 11.5px;
+    word-break: break-all;
+}
+.dns-records .dns-cell { max-width: 260px; }
+.dns-records .dns-copy {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all var(--fast, 150ms) var(--ease, ease-out);
+}
+.dns-records .dns-copy:hover {
+    color: var(--text);
+    border-color: var(--accent, #818cf8);
+}
+
 /* ============================================
    PLAN WIDGET (sidebar freemium indicator)
    ============================================ */

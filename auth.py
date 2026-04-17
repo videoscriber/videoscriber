@@ -195,6 +195,28 @@ async def update_email_settings(user_id: str, signature: str, branding_hidden: b
         await db.commit()
 
 
+async def set_custom_email_domain(
+    user_id: str, domain: str | None, domain_id: str | None, status: str | None
+) -> None:
+    """Persist the user's verified-domain record. Pass all None to clear."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET custom_email_domain = ?, "
+            "custom_email_domain_id = ?, custom_email_domain_status = ? WHERE id = ?",
+            (domain, domain_id, status, user_id),
+        )
+        await db.commit()
+
+
+async def update_custom_email_domain_status(user_id: str, status: str) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET custom_email_domain_status = ? WHERE id = ?",
+            (status, user_id),
+        )
+        await db.commit()
+
+
 async def mark_login(user_id: str) -> None:
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
@@ -228,7 +250,8 @@ async def get_session(token: str) -> dict | None:
         async with db.execute(
             "SELECT s.*, u.id AS user_id, u.phone, u.full_name, u.email, u.profile_completed_at, "
             "u.disabled_at, u.plan, u.stripe_customer_id, u.stripe_payment_method_id, "
-            "u.custom_email_domain, u.email_signature, u.email_branding_hidden "
+            "u.custom_email_domain, u.custom_email_domain_id, u.custom_email_domain_status, "
+            "u.email_signature, u.email_branding_hidden "
             "FROM sessions s JOIN users u ON u.id = s.user_id "
             "WHERE s.token = ? AND s.expires_at > ? AND u.disabled_at IS NULL",
             (token, datetime.now(timezone.utc).isoformat()),

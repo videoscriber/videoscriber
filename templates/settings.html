@@ -75,6 +75,64 @@ Videoscriber &middot; https://videoscriber.ai">{{ user.email_signature or '' }}<
         </form>
     </section>
 
+    {% set is_plus = (user.plan or 'free') == 'plus' %}
+    <section class="settings-section" id="domain-section">
+        <h2>Send from your own domain</h2>
+        <p class="section-sub">
+            Plus users can ship recap emails from their own verified domain.
+            Add your domain, copy the DNS records into your registrar, then click Verify.
+            {% if not is_plus %}
+            <br><span style="color: var(--text-muted); font-size: 12px;">Plus plan only. <a href="/upgrade" style="color: var(--accent);">Upgrade &rarr;</a></span>
+            {% endif %}
+        </p>
+
+        <div class="form-error" id="domain-error"></div>
+        <div class="settings-success" id="domain-success"></div>
+
+        <div id="domain-empty" hidden>
+            <form id="domain-add-form">
+                <div class="form-field">
+                    <label for="domain_input">Domain</label>
+                    <input type="text" id="domain_input" name="domain" class="form-input"
+                           placeholder="example.com" autocomplete="off"
+                           {% if not is_plus %}disabled{% endif %}>
+                </div>
+                <div class="settings-save">
+                    <button type="submit" class="btn btn-primary" id="domain-add-submit"
+                            {% if not is_plus %}disabled{% endif %}>Add domain</button>
+                </div>
+            </form>
+        </div>
+
+        <div id="domain-configured" hidden>
+            <div class="readonly-row">
+                <span class="label">Domain</span>
+                <span class="value" id="domain-name-display"></span>
+            </div>
+            <div class="readonly-row">
+                <span class="label">Status</span>
+                <span class="value"><span class="status-chip" id="domain-status-chip">pending</span></span>
+            </div>
+
+            <p class="section-sub" style="margin-top: 16px;">
+                Add the records below to your DNS provider. Resend uses these to authenticate mail sent from your domain.
+            </p>
+            <div class="dns-records-wrap">
+                <table class="dns-records">
+                    <thead>
+                        <tr><th>Type</th><th>Name</th><th>Value</th><th>TTL</th><th></th></tr>
+                    </thead>
+                    <tbody id="dns-records-body"></tbody>
+                </table>
+            </div>
+
+            <div class="settings-save" style="display: flex; gap: 10px;">
+                <button type="button" class="btn btn-primary" id="domain-verify">Verify</button>
+                <button type="button" class="btn-danger" id="domain-remove">Remove domain</button>
+            </div>
+        </div>
+    </section>
+
     <section class="settings-section">
         <h2>Account</h2>
         <p class="section-sub">Read-only details about your account. Phone number is the primary identifier for sign-in.</p>
@@ -138,6 +196,130 @@ Videoscriber &middot; https://videoscriber.ai">{{ user.email_signature or '' }}<
                 sigSubmit.disabled = false; sigSubmit.textContent = 'Save';
             }
         });
+    }
+
+    // Custom email domain (Plus-only)
+    const isPlus = {{ 'true' if (user.plan or 'free') == 'plus' else 'false' }};
+    if (isPlus) {
+        const domainEmpty = document.getElementById('domain-empty');
+        const domainConfigured = document.getElementById('domain-configured');
+        const domainErr = document.getElementById('domain-error');
+        const domainOk = document.getElementById('domain-success');
+        const addForm = document.getElementById('domain-add-form');
+        const addSubmit = document.getElementById('domain-add-submit');
+        const nameDisplay = document.getElementById('domain-name-display');
+        const statusChip = document.getElementById('domain-status-chip');
+        const recordsBody = document.getElementById('dns-records-body');
+        const verifyBtn = document.getElementById('domain-verify');
+        const removeBtn = document.getElementById('domain-remove');
+
+        const showErr = (msg) => {
+            domainErr.textContent = msg;
+            domainErr.classList.add('active');
+            setTimeout(() => domainErr.classList.remove('active'), 5000);
+        };
+        const showOk = (msg) => {
+            domainOk.textContent = msg;
+            domainOk.classList.add('active');
+            setTimeout(() => domainOk.classList.remove('active'), 3000);
+        };
+
+        const renderRecords = (records) => {
+            recordsBody.innerHTML = (records || []).map(r => `
+                <tr>
+                    <td><code>${r.type || ''}</code></td>
+                    <td class="dns-cell"><code>${r.name || ''}</code></td>
+                    <td class="dns-cell"><code>${r.value || ''}</code></td>
+                    <td>${r.ttl || 'Auto'}</td>
+                    <td><button type="button" class="dns-copy" data-copy="${(r.value || '').replace(/"/g, '&quot;')}">Copy</button></td>
+                </tr>
+            `).join('');
+            recordsBody.querySelectorAll('.dns-copy').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    try {
+                        await navigator.clipboard.writeText(btn.dataset.copy);
+                        btn.textContent = 'Copied';
+                        setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+                    } catch {}
+                });
+            });
+        };
+
+        const render = (state) => {
+            const configured = state && state.domain_id;
+            domainEmpty.hidden = !!configured;
+            domainConfigured.hidden = !configured;
+            if (!configured) return;
+            nameDisplay.textContent = state.domain;
+            statusChip.textContent = state.status;
+            statusChip.className = `status-chip status-${state.status}`;
+            renderRecords(state.records);
+        };
+
+        const load = async () => {
+            try {
+                const res = await fetch('/api/email-domain');
+                if (res.ok) render(await res.json());
+            } catch {}
+        };
+
+        addForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            addSubmit.disabled = true; addSubmit.textContent = 'Adding…';
+            try {
+                const body = new URLSearchParams({ domain: addForm.domain.value });
+                const res = await fetch('/api/email-domain', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body,
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.detail || 'Could not add domain');
+                render(data);
+                showOk('Domain added. Add the DNS records below, then click Verify.');
+            } catch (err) {
+                showErr(err.message);
+            } finally {
+                addSubmit.disabled = false; addSubmit.textContent = 'Add domain';
+            }
+        });
+
+        verifyBtn.addEventListener('click', async () => {
+            verifyBtn.disabled = true; verifyBtn.textContent = 'Checking…';
+            try {
+                const res = await fetch('/api/email-domain/verify', { method: 'POST' });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.detail || 'Verification failed');
+                render(data);
+                if (data.status === 'verified') {
+                    showOk('Domain verified — your recap emails will now ship from ' + data.domain + '.');
+                } else {
+                    showErr('DNS records aren\u2019t fully propagated yet. Try again in a few minutes.');
+                }
+            } catch (err) {
+                showErr(err.message);
+            } finally {
+                verifyBtn.disabled = false; verifyBtn.textContent = 'Verify';
+            }
+        });
+
+        removeBtn.addEventListener('click', async () => {
+            if (!confirm('Remove this domain? You\u2019ll fall back to sending from videoscriber.ai.')) return;
+            removeBtn.disabled = true;
+            try {
+                const res = await fetch('/api/email-domain', { method: 'DELETE' });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.detail || 'Remove failed');
+                render(data);
+                showOk('Domain removed.');
+            } catch (err) {
+                showErr(err.message);
+            } finally {
+                removeBtn.disabled = false;
+            }
+        });
+
+        load();
     }
 
     const form = document.getElementById('profile-form');
