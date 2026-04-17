@@ -16,3 +16,8 @@ services:
       timeout: 5s
       retries: 3
     restart: unless-stopped
+    # Give the app up to 60s to finish in-flight ffmpeg work and atomically
+    # rename output files before Docker sends SIGKILL. Matches the app's
+    # GRACEFUL_SHUTDOWN_S so the two don't fight.
+    stop_grace_period: 60s
+    stop_signal: SIGTERM

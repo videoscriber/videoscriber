@@ -144,12 +144,23 @@ function renderSegments(record) {
     div.className = 'segment';
     div.dataset.start = seg.start;
     div.dataset.end = seg.end;
+    div.setAttribute('role', 'button');
+    div.setAttribute('tabindex', '0');
+    div.setAttribute('aria-label', `Play from ${formatTimestamp(seg.start)}`);
+    // Seek on click anywhere in the segment (except on the rename chip inputs)
+    div.addEventListener('click', (e) => {
+      if (e.target.closest('input, button, a')) return;
+      seekVideo(seg.start);
+    });
+    div.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); seekVideo(seg.start); }
+    });
 
     const ts = document.createElement('button');
     ts.className = 'segment-timestamp';
     ts.textContent = formatTimestamp(seg.start);
     ts.setAttribute('aria-label', `Seek to ${formatTimestamp(seg.start)}`);
-    ts.onclick = () => seekVideo(seg.start);
+    ts.onclick = (e) => { e.stopPropagation(); seekVideo(seg.start); };
     div.appendChild(ts);
 
     if (seg.speaker) {

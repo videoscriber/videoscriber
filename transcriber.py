@@ -50,12 +50,18 @@ async def _run_ffmpeg(args: list[str]) -> tuple[int, bytes]:
 
 
 async def enhance_video(input_path: Path, output_path: Path) -> bool:
-    """Enhance video quality. Writes to a .tmp path and atomically renames on
-    success so an interrupted ffmpeg can never leave a corrupt final file."""
+    """Produce a web-optimized proxy: cap resolution at 1080p (keeping aspect
+    ratio), H.264 + faststart, enhanced with mild denoise/sharpen. Writes to a
+    .tmp path and atomically renames on success so an interrupted ffmpeg can
+    never leave a corrupt final file."""
     tmp_path = output_path.with_suffix(output_path.suffix + ".tmp")
     tmp_path.unlink(missing_ok=True)
     try:
+        # scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease
+        # Only downscales when source is larger; never upscales.
         filtergraph = (
+            "scale='if(gt(iw,1920),1920,iw)':'if(gt(ih,1080),1080,ih)':"
+            "force_original_aspect_ratio=decrease:flags=lanczos,"
             "hqdn3d=3:2:3:2,"
             "unsharp=5:5:0.8:3:3:0.3,"
             "eq=brightness=0.03:contrast=1.03:saturation=1.08"
@@ -65,9 +71,10 @@ async def enhance_video(input_path: Path, output_path: Path) -> bool:
         rc, stderr = await _run_ffmpeg([
             "ffmpeg", "-i", str(input_path),
             "-vf", filtergraph,
-            "-c:v", "h264_videotoolbox", "-q:v", "65",
-            "-c:a", "copy",
+            "-c:v", "h264_videotoolbox", "-q:v", "60",
+            "-c:a", "aac", "-b:a", "128k",
             "-movflags", "+faststart",
+            "-pix_fmt", "yuv420p",
             str(tmp_path), "-y",
         ])
 
@@ -78,9 +85,11 @@ async def enhance_video(input_path: Path, output_path: Path) -> bool:
             rc, stderr = await _run_ffmpeg([
                 "ffmpeg", "-i", str(input_path),
                 "-vf", filtergraph,
-                "-c:v", "libx264", "-preset", "fast", "-crf", "20",
-                "-c:a", "copy",
+                "-c:v", "libx264", "-preset", "fast", "-crf", "22",
+                "-maxrate", "4M", "-bufsize", "8M",
+                "-c:a", "aac", "-b:a", "128k",
                 "-movflags", "+faststart",
+                "-pix_fmt", "yuv420p",
                 str(tmp_path), "-y",
             ])
 
