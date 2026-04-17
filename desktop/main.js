@@ -66,6 +66,35 @@ function userVenvPath() {
   return path.join(app.getPath('userData'), 'venv');
 }
 
+async function ensureUserVenv() {
+  const venvDir = userVenvPath();
+  const venvPython = path.join(venvDir, 'bin', 'python');
+  if (fs.existsSync(venvPython)) return venvPython;
+
+  // Bootstrap with system python — we need it to create the venv.
+  let sysPython = null;
+  for (const cmd of ['python3.12', 'python3.11', 'python3.10', 'python3']) {
+    try {
+      const result = execSync(`which ${cmd}`, { encoding: 'utf8' }).trim();
+      if (result) { sysPython = result; break; }
+    } catch {}
+  }
+  if (!sysPython) throw new Error('Python 3.10+ not found on PATH.');
+
+  const reqFile = path.join(resourcesPath, 'requirements.txt');
+  if (!fs.existsSync(reqFile)) throw new Error(`requirements.txt missing at ${reqFile}`);
+
+  fs.mkdirSync(path.dirname(venvDir), { recursive: true });
+  execSync(`"${sysPython}" -m venv "${venvDir}"`, { stdio: 'inherit' });
+  execSync(`"${venvPython}" -m pip install --upgrade pip --quiet`, { stdio: 'inherit' });
+  execSync(`"${venvPython}" -m pip install -r "${reqFile}" --quiet`, {
+    stdio: 'inherit',
+    // pip install can take a minute; let it run.
+    timeout: 10 * 60 * 1000,
+  });
+  return venvPython;
+}
+
 function findFfmpeg() {
   // Check bundled ffmpeg first
   const bundledFfmpeg = path.join(resourcesPath, 'bin', 'ffmpeg');
@@ -90,16 +119,20 @@ async function startPythonBackend() {
     return;
   }
 
-  // If we're falling back to system python, the app.py imports will fail because
-  // FastAPI + friends are not globally installed. Nudge the user to run setup.
+  // If the per-user venv isn't set up yet, auto-create it and install
+  // requirements. One-time cost (~1 min); avoids making the user open Terminal.
   if (!fs.existsSync(userVenvPath())) {
-    dialog.showErrorBox('First-run setup required',
-      'Videoscriber stores its Python dependencies in a per-user venv. Open ' +
-      'Terminal and run:\n\n' +
-      `bash "${setupScriptPath()}"\n\n` +
-      'Then launch Videoscriber again.');
-    app.quit();
-    return;
+    try {
+      await ensureUserVenv();
+    } catch (err) {
+      dialog.showErrorBox('First-run setup failed',
+        'Could not create the Python environment automatically:\n\n' +
+        err.message + '\n\n' +
+        'As a workaround, open Terminal and run:\n' +
+        `bash "${setupScriptPath()}"`);
+      app.quit();
+      return;
+    }
   }
 
   const ffmpegDir = findFfmpeg();
@@ -113,11 +146,14 @@ async function startPythonBackend() {
   serverPort = await findAvailablePort();
 
   // Build environment
+  const userEnvPath = path.join(app.getPath('userData'), '.env');
   const env = {
     ...process.env,
     PATH: `${ffmpegDir}:${process.env.PATH}`,
     HOST: '127.0.0.1',
     PORT: String(serverPort),
+    VIDEOSCRIBER_DESKTOP: '1',
+    VIDEOSCRIBER_USER_ENV_PATH: userEnvPath,
   };
 
   // Prefer the user-data .env (written by setup-mac.sh); fall back to a .env
