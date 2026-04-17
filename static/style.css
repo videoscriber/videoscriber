@@ -133,6 +133,7 @@ input, textarea, button, select { font-family: inherit; font-size: inherit; }
 }
 
 .topbar-left { display: flex; align-items: center; gap: 0.6rem; flex-shrink: 0; }
+.topbar-left .sidebar-toggle { margin-top: 2px; }
 
 .brand {
   display: flex;

@@ -508,9 +508,27 @@ async def process_transcription_assemblyai(
         )
         transcriber = aai.Transcriber()
 
-        transcript = await asyncio.to_thread(
-            transcriber.transcribe, str(audio_path), config=config
+        # Kick off the blocking transcribe call in a thread, then tick progress
+        # every 2s while it runs. AssemblyAI typically finishes in 10-30% of
+        # audio duration; we estimate 25% and cap progress at 80 so the final
+        # jump to 85 still reads as "just finished".
+        import time as _time
+        trans_task = asyncio.create_task(
+            asyncio.to_thread(transcriber.transcribe, str(audio_path), config=config)
         )
+        started = _time.monotonic()
+        estimated_s = max(30.0, (duration or 60.0) * 0.30)
+        while not trans_task.done():
+            elapsed = _time.monotonic() - started
+            pct = 15 + int(min(elapsed / estimated_s, 1.0) * 65)
+            pct = min(pct, 80)
+            await db.update_transcription(job_id, progress=pct)
+            try:
+                await asyncio.wait_for(asyncio.shield(trans_task), timeout=2.0)
+                break
+            except asyncio.TimeoutError:
+                continue
+        transcript = await trans_task
 
         if transcript.status == aai.TranscriptStatus.error:
             raise RuntimeError(f"AssemblyAI error: {transcript.error}")
