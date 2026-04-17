@@ -647,3 +647,18 @@ async def delete_transcription(id: str):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("DELETE FROM transcriptions WHERE id = ?", (id,))
         await db.commit()
+
+
+async def queue_stats() -> dict:
+    """Current queue state: how many jobs are queued and how many are actively running."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT status, COUNT(*) FROM transcriptions "
+            "WHERE status IN ('pending', 'extracting', 'transcribing') "
+            "GROUP BY status"
+        ) as cursor:
+            counts = {row[0]: row[1] async for row in cursor}
+    return {
+        "pending": counts.get("pending", 0),
+        "running": counts.get("extracting", 0) + counts.get("transcribing", 0),
+    }

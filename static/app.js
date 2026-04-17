@@ -151,6 +151,10 @@ async function pollJob(jobId) {
     const res = await fetch(`/api/transcriptions/${jobId}`);
     const data = await res.json();
 
+    // Keep listData in sync so queue-position calculations stay accurate
+    const listIdx = listData.findIndex(x => x.id === jobId);
+    if (listIdx >= 0) listData[listIdx] = data;
+
     updateListItem(data);
 
     // Check for status transitions
@@ -160,6 +164,12 @@ async function pollJob(jobId) {
     }
     if (prev && prev !== 'error' && data.status === 'error') {
       showToast(`${data.filename} failed: ${data.error_message || 'Unknown error'}`, 'error');
+    }
+    // If this job moved out of the queue, re-render still-pending items so their position numbers update
+    if (prev === 'pending' && data.status !== 'pending') {
+      for (const other of listData) {
+        if (other.status === 'pending' && other.id !== jobId) updateListItem(other);
+      }
     }
     previousStatuses[jobId] = data.status;
 
@@ -210,12 +220,28 @@ function appendListItem(item) {
   transcriptionList.appendChild(el);
 }
 
+function computeQueuePosition(item) {
+  if (item.status !== 'pending') return null;
+  const pending = listData
+    .filter(x => x.status === 'pending')
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+  const idx = pending.findIndex(x => x.id === item.id);
+  if (idx < 0) return null;
+  return { position: idx + 1, total: pending.length };
+}
+
 function updateListItemContent(el, item) {
-  const statusLabel = item.status === 'done' ? 'Done' :
-    item.status === 'error' ? 'Error' :
-    item.status === 'extracting' ? 'Extracting…' :
-    item.status === 'transcribing' ? `${item.progress}%` :
-    'Pending';
+  let statusLabel;
+  if (item.status === 'done') statusLabel = 'Done';
+  else if (item.status === 'error') statusLabel = 'Error';
+  else if (item.status === 'extracting') statusLabel = 'Extracting…';
+  else if (item.status === 'transcribing') statusLabel = `${item.progress}%`;
+  else if (item.status === 'pending') {
+    const q = computeQueuePosition(item);
+    statusLabel = q && q.total > 1 ? `Queued #${q.position}` : 'Pending';
+  } else {
+    statusLabel = 'Pending';
+  }
 
   let progressHtml = '';
   if (item.status === 'transcribing' || item.status === 'extracting') {

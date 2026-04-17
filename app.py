@@ -153,21 +153,7 @@ async def lifespan(app: FastAPI):
     AUDIO_DIR.mkdir(exist_ok=True)
 
     await db.init_db()
-    # Sweep any `.tmp` files left over from an interrupted ffmpeg run.
-    try:
-        removed = db._cleanup_tmp_files(str(UPLOAD_DIR))
-        if removed:
-            logger.info("Cleaned up %d leftover .tmp file(s)", removed)
-    except Exception as e:
-        logger.warning("Tmp-file cleanup failed: %s", e)
-    # Heal transcriptions whose post-processing was interrupted (file on disk,
-    # video_path NULL in DB). Happens during local uvicorn --reload cycles.
-    try:
-        repaired = await db.recover_orphaned_video_paths(str(UPLOAD_DIR))
-        if repaired:
-            logger.info("Recovered video_path for %d orphaned transcription(s)", repaired)
-    except Exception as e:
-        logger.warning("Orphaned video-path recovery failed: %s", e)
+    await _cleanup_orphans()
     # Run retention sweep immediately, then hourly in background
     try:
         await _sweep_free_tier_retention()
@@ -199,6 +185,79 @@ async def lifespan(app: FastAPI):
                     t.cancel()
                 await asyncio.gather(*_inflight_transcriptions, return_exceptions=True)
         retention_task.cancel()
+
+
+def _upload_job_id(path: Path) -> str:
+    """Derive the job_id prefix from an upload filename.
+
+    Upload files follow three naming conventions, all rooted at a UUID job id:
+      - {job_id}{ext}           — original uploaded video
+      - {job_id}_preview{ext}   — preview-video uploaded separately
+      - {job_id}_enhanced.mp4   — output of ffmpeg post-processing
+    """
+    stem = path.stem
+    if stem.endswith("_preview"):
+        return stem[: -len("_preview")]
+    if stem.endswith("_enhanced"):
+        return stem[: -len("_enhanced")]
+    return stem
+
+
+async def _cleanup_orphans() -> None:
+    """On startup, prune stale files in uploads/ and audio/.
+
+    Safe to run because init_db() has already flipped any in-flight jobs
+    (status in pending/extracting/transcribing) to 'error'. That means no
+    active worker owns files in these directories — anything still on disk
+    is either tied to a persisted row, or is a leak from a previous crash.
+
+    Audio: *.mp3 is purely a transcription scratchpad. Nothing references
+    these across a restart, so every file is removable.
+
+    Uploads: keep files whose job_id prefix matches a live DB row. Also
+    re-associate orphaned originals with rows that were interrupted but
+    have no video_path set, so retry remains possible.
+    """
+    records = await db.list_transcriptions()
+    by_id = {r["id"]: r for r in records}
+
+    audio_removed = 0
+    for p in AUDIO_DIR.glob("*.mp3"):
+        try:
+            p.unlink()
+            audio_removed += 1
+        except OSError as e:
+            logger.warning("Could not remove stale audio %s: %s", p, e)
+
+    upload_removed = 0
+    repaired = 0
+    for p in UPLOAD_DIR.iterdir():
+        if not p.is_file():
+            continue
+        job_id = _upload_job_id(p)
+        record = by_id.get(job_id)
+        if record is None:
+            try:
+                p.unlink()
+                upload_removed += 1
+            except OSError as e:
+                logger.warning("Could not remove orphan upload %s: %s", p, e)
+            continue
+        # Re-associate: row is in 'error' with no video_path but the original
+        # upload still exists on disk. Reattach so retry can find it.
+        if (
+            record.get("status") == "error"
+            and not record.get("video_path")
+            and not p.name.endswith(("_preview" + p.suffix, "_enhanced.mp4"))
+        ):
+            await db.update_transcription(job_id, video_path=str(p))
+            repaired += 1
+
+    if audio_removed or upload_removed or repaired:
+        logger.info(
+            "Startup cleanup: removed %d audio file(s), %d orphan upload(s); reattached %d interrupted job(s)",
+            audio_removed, upload_removed, repaired,
+        )
 
 
 app = FastAPI(lifespan=lifespan)
@@ -329,6 +388,7 @@ async def get_config(user: dict = Depends(auth.require_user)):
     used = await _usage_count(user["user_id"])
     return {
         "diarization_available": bool(os.getenv("ASSEMBLYAI_API_KEY")),
+        "max_concurrent_jobs": MAX_CONCURRENT_JOBS,
         "user": {
             "id": user["user_id"],
             "full_name": user.get("full_name"),
@@ -343,6 +403,16 @@ async def get_config(user: dict = Depends(auth.require_user)):
             "remaining": None if limits["monthly_limit"] is None else max(0, limits["monthly_limit"] - used),
             "window_days": USAGE_WINDOW_DAYS,
         },
+    }
+
+
+@app.get("/api/queue")
+async def get_queue():
+    stats = await db.queue_stats()
+    return {
+        "max_concurrent": MAX_CONCURRENT_JOBS,
+        "running": stats["running"],
+        "pending": stats["pending"],
     }
 
 
