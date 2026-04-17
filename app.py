@@ -51,6 +51,8 @@ FREE_MAX_FILE_MB = int(os.getenv("FREE_MAX_FILE_MB", "250"))
 FREE_MONTHLY_LIMIT = int(os.getenv("FREE_MONTHLY_LIMIT", "3"))
 PLUS_MAX_FILE_MB = int(os.getenv("PLUS_MAX_FILE_MB", "1024"))
 USAGE_WINDOW_DAYS = 30
+# Free-tier transcripts are deleted after this many days
+FREE_RETENTION_DAYS = int(os.getenv("FREE_RETENTION_DAYS", "10"))
 
 
 def _plan_limits(plan: str) -> dict:
@@ -69,6 +71,36 @@ def _require_owner(record: dict | None, user: dict) -> dict:
     if not record or record.get("user_id") != user["user_id"]:
         raise HTTPException(404, "Transcription not found")
     return record
+
+
+async def _sweep_free_tier_retention() -> int:
+    """Delete free-plan transcriptions older than FREE_RETENTION_DAYS.
+    Also cleans up stored video files. Returns the number deleted."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=FREE_RETENTION_DAYS)).isoformat()
+    stale = await db.find_free_transcriptions_older_than(cutoff)
+    if not stale:
+        return 0
+    for row in stale:
+        vp = row.get("video_path")
+        if vp:
+            try:
+                Path(vp).unlink(missing_ok=True)
+            except Exception as e:
+                logger.warning("Retention: failed to unlink %s: %s", vp, e)
+    await db.delete_transcriptions_bulk([row["id"] for row in stale])
+    logger.info("Retention sweep: deleted %d free-tier transcriptions older than %d days",
+                len(stale), FREE_RETENTION_DAYS)
+    return len(stale)
+
+
+async def _retention_loop() -> None:
+    """Run the retention sweep hourly while the app is alive."""
+    while True:
+        try:
+            await _sweep_free_tier_retention()
+        except Exception as e:
+            logger.warning("Retention sweep failed: %s", e)
+        await asyncio.sleep(3600)
 
 _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
@@ -110,8 +142,17 @@ async def lifespan(app: FastAPI):
     AUDIO_DIR.mkdir(exist_ok=True)
 
     await db.init_db()
+    # Run retention sweep immediately, then hourly in background
+    try:
+        await _sweep_free_tier_retention()
+    except Exception as e:
+        logger.warning("Initial retention sweep failed: %s", e)
+    retention_task = asyncio.create_task(_retention_loop())
     logger.info("Videoscriber ready at http://%s:%s", HOST, PORT)
-    yield
+    try:
+        yield
+    finally:
+        retention_task.cancel()
 
 
 app = FastAPI(lifespan=lifespan)

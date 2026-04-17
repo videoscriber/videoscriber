@@ -221,6 +221,28 @@ async def count_transcriptions_since(user_id: str, since_iso: str) -> int:
             return count
 
 
+async def find_free_transcriptions_older_than(cutoff_iso: str) -> list[dict]:
+    """Return {id, video_path} for transcriptions owned by free-plan users older than cutoff."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT t.id, t.video_path FROM transcriptions t "
+            "JOIN users u ON u.id = t.user_id "
+            "WHERE u.plan = 'free' AND t.created_at < ?",
+            (cutoff_iso,),
+        ) as cur:
+            return [dict(row) for row in await cur.fetchall()]
+
+
+async def delete_transcriptions_bulk(ids: list[str]) -> None:
+    if not ids:
+        return
+    placeholders = ",".join("?" * len(ids))
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(f"DELETE FROM transcriptions WHERE id IN ({placeholders})", ids)
+        await db.commit()
+
+
 async def set_user_plan(user_id: str, plan: str,
                         stripe_customer_id: str | None = None,
                         stripe_payment_method_id: str | None = None) -> None:

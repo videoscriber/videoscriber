@@ -26,7 +26,7 @@
             Upgrade to <span style="background: linear-gradient(180deg, #ffffff 0%, #A78BFA 100%); -webkit-background-clip: text; background-clip: text; color: transparent;">Plus</span>
         </h1>
         <p style="font-size: 17px; color: var(--text-secondary); max-width: 560px; margin: 0 auto;">
-            Remove the limits. Keep a card on file, pay only for what you use.
+            No subscription. Keep a card on file and pay only for the AI tokens you actually use &mdash; transcription, recap drafting, and the AI assistant.
         </p>
     </div>
 
@@ -37,21 +37,22 @@
             <ul style="list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-direction: column; gap: 10px; font-size: 14px; color: var(--text-secondary); line-height: 1.5;">
                 <li>{{ free_monthly_limit }} transcriptions per 30 days</li>
                 <li>Up to {{ free_max_file_mb }} MB per recording</li>
-                <li>Cloud backup &amp; sync</li>
+                <li>Transcripts stored for 10 days, then auto-deleted</li>
                 <li>Recap drafting</li>
                 <li>Email recap from our domain, with Videoscriber footer</li>
             </ul>
         </div>
         <div style="background: linear-gradient(180deg, rgba(167, 139, 250, 0.06), rgba(167, 139, 250, 0.02)); border: 1px solid rgba(167, 139, 250, 0.28); border-radius: 18px; padding: 32px; display: flex; flex-direction: column; gap: 16px; box-shadow: 0 20px 60px -20px rgba(139, 92, 246, 0.25);">
             <div style="font-size: 13px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: #A78BFA;">Plus</div>
-            <div style="font-size: 32px; font-weight: 700; line-height: 1;">Card on file <span style="font-size: 14px; font-weight: 400; color: var(--text-muted);">/ pay as you go</span></div>
+            <div style="font-size: 32px; font-weight: 700; line-height: 1;">Card on file <span style="font-size: 14px; font-weight: 400; color: var(--text-muted);">/ pay per AI token</span></div>
             <ul style="list-style: none; padding: 0; margin: 8px 0 0; display: flex; flex-direction: column; gap: 10px; font-size: 14px; color: var(--text); line-height: 1.5;">
                 <li>Unlimited transcriptions</li>
                 <li>Up to {{ plus_max_file_mb }} MB per recording</li>
-                <li>Cloud backup &amp; sync</li>
+                <li>Transcripts kept indefinitely (until you delete them)</li>
                 <li>Recap drafting</li>
+                <li>AI assistant &mdash; chat with your library for insights</li>
                 <li>Email recap from your domain (remove Videoscriber footer)</li>
-                <li>Priority processing &amp; upcoming features</li>
+                <li>Pay only for the AI tokens you use</li>
             </ul>
             {% if plan == 'plus' %}
             <div style="margin-top: 12px; padding: 12px; border-radius: 10px; background: rgba(52, 211, 153, 0.08); border: 1px solid rgba(52, 211, 153, 0.24); color: #34d399; font-size: 13px; text-align: center;">You're on Plus. Thanks for supporting us.</div>
