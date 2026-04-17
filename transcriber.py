@@ -342,6 +342,25 @@ async def post_process(job_id: str, all_segments: list[dict], plain_text: str,
 
     await db.update_transcription(job_id, **updates)
 
+    # Index the transcript for the AI Assistant (non-fatal). Uses the final
+    # segments after speaker-id if available, otherwise the originals.
+    try:
+        final_segments_json = updates.get("transcript_segments_json")
+        if not final_segments_json:
+            final_segments_json = json.dumps(all_segments)
+        record = await db.get_transcription(job_id)
+        owner = record.get("user_id") if record else None
+        if owner:
+            from retrieval import embed_and_store_transcription
+            await embed_and_store_transcription(
+                transcription_id=job_id,
+                user_id=owner,
+                segments_json=final_segments_json,
+                transcript_text=updates.get("transcript_text") or plain_text,
+            )
+    except Exception as e:
+        logger.warning("AI indexing failed for %s (non-fatal): %s", job_id, e)
+
 
 async def _passthrough(val):
     return val
