@@ -131,6 +131,11 @@ async def privacy_page(request: Request):
     return templates.TemplateResponse(request, "legal/privacy.html")
 
 
+@app.get("/health")
+async def health():
+    return {"ok": True}
+
+
 @app.get("/api/config")
 async def get_config(user: dict = Depends(auth.require_user)):
     return {
