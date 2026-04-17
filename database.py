@@ -203,10 +203,34 @@ async def _migrate_users_phone_nullable(db: aiosqlite.Connection) -> None:
     )
 
 
+async def _migrate_users_dedupe(db: aiosqlite.Connection) -> None:
+    """Before we CREATE UNIQUE INDEX on users.email/phone, remove duplicates
+    the old schema allowed through. Keep the oldest row per email/phone so we
+    don't surprise users whose account predates the tightening.
+
+    Pattern: when you tighten the users schema (UNIQUE, NOT NULL, CHECK), add
+    a sibling cleanup here. It runs before executescript(SCHEMA), so the
+    index-creation assertions on a fresh migration will always succeed."""
+    async with db.execute("PRAGMA table_info(users)") as cur:
+        cols = [row async for row in cur]
+    if not cols:
+        return
+    for column in ("email", "phone"):
+        # Partial unique index only cares about non-null values.
+        await db.execute(
+            f"DELETE FROM users WHERE rowid NOT IN ("
+            f"  SELECT MIN(rowid) FROM users "
+            f"  WHERE {column} IS NOT NULL GROUP BY {column}"
+            f") AND {column} IS NOT NULL"
+        )
+    await db.commit()
+
+
 async def init_db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(DB_PATH) as db:
         await _migrate_users_phone_nullable(db)
+        await _migrate_users_dedupe(db)
         await db.executescript(SCHEMA)
 
         # Migrate transcriptions: add new columns if missing
