@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Videoscriber — AI transcription agents that always follow up{% endblock %}</title>
+    <title>{% block title %}Videoscriber: AI transcription agents that always follow up{% endblock %}</title>
     <script>
       // Apply theme before styles load to avoid flash. Default: dark.
       (() => {
@@ -13,7 +13,7 @@
     </script>
 
     {# === SEO ============================================================ #}
-    {% set default_description = "Videoscriber is the AI meeting assistant for people who hate taking notes. Turn any recording into a transcript, draft a recap email, and send the follow-up in under a minute — so every meeting stays aligned on next steps." %}
+    {% set default_description = "Videoscriber is the AI meeting assistant for people who hate taking notes. Turn any recording into a transcript, draft a recap email, and send the follow-up in under a minute: so every meeting stays aligned on next steps." %}
     {% set og_url = "https://videoscriber.ai" + (request.url.path if request is defined and request else "/") %}
     {% set og_image = "https://videoscriber.ai/static/brand/og-image.png?v=1" %}
     <meta name="description" content="{% block meta_description %}{{ default_description }}{% endblock %}">
@@ -31,7 +31,7 @@
     <meta property="og:image" content="{% block og_image %}{{ og_image }}{% endblock %}">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
-    <meta property="og:image:alt" content="Videoscriber — AI transcription agents that always follow up">
+    <meta property="og:image:alt" content="Videoscriber: AI transcription agents that always follow up">
     <meta property="og:locale" content="en_US">
 
     {# === Twitter / X ==================================================== #}
@@ -39,7 +39,7 @@
     <meta name="twitter:title" content="{% block twitter_title %}{{ self.title() }}{% endblock %}">
     <meta name="twitter:description" content="{% block twitter_description %}{{ self.meta_description() }}{% endblock %}">
     <meta name="twitter:image" content="{% block twitter_image %}{{ og_image }}{% endblock %}">
-    <meta name="twitter:image:alt" content="Videoscriber — AI transcription agents that always follow up">
+    <meta name="twitter:image:alt" content="Videoscriber: AI transcription agents that always follow up">
 
     <meta name="theme-color" content="#09090b">
     {% block extra_head %}{% endblock %}
@@ -79,6 +79,7 @@
             </div>
             <nav class="public-footer-links">
                 <a href="/download">Download</a>
+                <a href="/brand">Brand</a>
                 <a href="/terms">Terms</a>
                 <a href="/privacy">Privacy</a>
                 <a href="https://github.com/videoscriber/videoscriber" rel="noopener" target="_blank">GitHub</a>
