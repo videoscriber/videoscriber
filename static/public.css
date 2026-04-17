@@ -1,0 +1,339 @@
+/* Public pages — landing, auth, legal. Inherits design tokens from style.css */
+
+.public-body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Header */
+.public-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 32px;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: rgba(9, 9, 11, 0.8);
+    backdrop-filter: blur(12px);
+    z-index: 10;
+}
+.public-brand {
+    color: var(--text);
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+}
+.public-nav {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+}
+.public-nav a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 14px;
+    transition: color var(--fast) var(--ease);
+}
+.public-nav a:hover { color: var(--text); }
+
+/* Main */
+.public-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Footer */
+.public-footer {
+    border-top: 1px solid var(--border);
+    padding: 32px;
+    margin-top: 80px;
+}
+.public-footer-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 24px;
+    flex-wrap: wrap;
+}
+.public-footer-brand {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    color: var(--text-secondary);
+}
+.public-footer-brand .muted {
+    font-size: 13px;
+    color: var(--text-muted);
+}
+.public-footer-links {
+    display: flex;
+    gap: 24px;
+}
+.public-footer-links a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 13px;
+    transition: color var(--fast) var(--ease);
+}
+.public-footer-links a:hover { color: var(--text); }
+
+/* Buttons */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 20px;
+    border-radius: var(--radius);
+    font-weight: 600;
+    font-size: 14px;
+    font-family: inherit;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all var(--fast) var(--ease);
+    text-decoration: none;
+    line-height: 1;
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-sm { padding: 8px 14px; font-size: 13px; }
+.btn-lg { padding: 16px 28px; font-size: 15px; }
+.btn-primary {
+    background: var(--grad);
+    color: #fff;
+    box-shadow: var(--shadow-glow);
+}
+.btn-primary:hover:not(:disabled) { background: var(--grad-hover); transform: translateY(-1px); }
+.btn-ghost {
+    background: transparent;
+    color: var(--text-secondary);
+    border-color: var(--border);
+}
+.btn-ghost:hover:not(:disabled) { color: var(--text); border-color: var(--border-hover); background: var(--surface-1); }
+
+/* Auth card (login/signup/profile) */
+.auth-wrapper {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+}
+.auth-card {
+    width: 100%;
+    max-width: 420px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 40px;
+    box-shadow: var(--shadow-lg);
+}
+.auth-card h1 {
+    font-size: 26px;
+    font-weight: 700;
+    margin: 0 0 8px;
+    letter-spacing: -0.01em;
+}
+.auth-card .subtitle {
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin: 0 0 32px;
+    line-height: 1.5;
+}
+.auth-step { display: none; }
+.auth-step.active { display: block; }
+
+/* Form */
+.form-field { margin-bottom: 20px; }
+.form-field label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+}
+.form-input {
+    width: 100%;
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 15px;
+    transition: border-color var(--fast) var(--ease), background var(--fast) var(--ease);
+    box-sizing: border-box;
+}
+.form-input:focus {
+    outline: none;
+    border-color: var(--border-accent);
+    background: var(--surface-2);
+}
+.form-input.otp-input {
+    font-family: var(--font-mono);
+    font-size: 22px;
+    letter-spacing: 10px;
+    text-align: center;
+    padding: 16px;
+}
+.form-help {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 6px;
+}
+.form-checkbox {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin: 16px 0;
+}
+.form-checkbox input {
+    margin-top: 2px;
+    flex-shrink: 0;
+    accent-color: var(--accent);
+}
+.form-checkbox a {
+    color: var(--accent);
+    text-decoration: none;
+}
+.form-checkbox a:hover { text-decoration: underline; }
+
+.btn-full { width: 100%; padding: 14px; }
+.form-error {
+    background: rgba(248, 113, 113, 0.08);
+    border: 1px solid rgba(248, 113, 113, 0.2);
+    color: var(--error);
+    font-size: 13px;
+    padding: 10px 14px;
+    border-radius: var(--radius);
+    margin-bottom: 16px;
+    display: none;
+}
+.form-error.active { display: block; }
+
+.auth-meta {
+    text-align: center;
+    margin-top: 24px;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+.auth-meta a {
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 500;
+}
+.auth-meta a:hover { text-decoration: underline; }
+
+.auth-link-btn {
+    background: transparent;
+    border: none;
+    color: var(--accent);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 0;
+    font-family: inherit;
+}
+.auth-link-btn:hover { text-decoration: underline; }
+
+/* Landing hero */
+.hero {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 80px 24px 40px;
+    text-align: center;
+}
+.hero h1 {
+    font-size: clamp(40px, 6vw, 64px);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    line-height: 1.05;
+    margin: 0 0 24px;
+    background: linear-gradient(180deg, #ffffff 0%, #a78bfa 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+.hero p.lead {
+    font-size: clamp(16px, 2vw, 20px);
+    color: var(--text-secondary);
+    max-width: 720px;
+    margin: 0 auto 40px;
+    line-height: 1.55;
+}
+.hero-cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.hero-pills {
+    display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;
+    margin: 32px auto 0; max-width: 680px;
+}
+.hero-pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: 999px;
+    background: var(--accent-dim); color: var(--text-secondary);
+    font-size: 12px; font-weight: 500;
+    border: 1px solid var(--border);
+}
+
+.audiences {
+    max-width: 1100px; margin: 80px auto 0; padding: 0 24px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 24px;
+}
+@media (max-width: 720px) { .audiences { grid-template-columns: 1fr; } }
+.audience-card {
+    background: var(--surface-raised);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 32px;
+}
+.audience-card h3 {
+    font-size: 20px; font-weight: 700; margin: 0 0 12px;
+}
+.audience-card p {
+    color: var(--text-secondary); font-size: 14px; line-height: 1.6; margin: 0 0 16px;
+}
+.audience-card ul {
+    color: var(--text-secondary); font-size: 14px; padding-left: 18px;
+    margin: 0; line-height: 1.8;
+}
+
+/* Legal pages */
+.legal-wrapper {
+    max-width: 760px;
+    margin: 60px auto;
+    padding: 0 24px;
+}
+.legal-wrapper h1 {
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 0 0 8px;
+}
+.legal-wrapper .legal-updated {
+    color: var(--text-muted);
+    font-size: 13px;
+    margin-bottom: 40px;
+}
+.legal-wrapper h2 {
+    font-size: 18px;
+    font-weight: 600;
+    margin: 40px 0 16px;
+    color: var(--text);
+}
+.legal-wrapper p, .legal-wrapper li {
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 1.7;
+}
+.legal-wrapper ul { padding-left: 20px; }
+.legal-wrapper a { color: var(--accent); }

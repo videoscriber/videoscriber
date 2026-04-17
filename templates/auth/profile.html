@@ -1,0 +1,60 @@
+{% extends "_public_base.html" %}
+{% block title %}Complete your profile — Videoscriber{% endblock %}
+{% block nav %}{% endblock %}
+{% block content %}
+<div class="auth-wrapper">
+    <div class="auth-card">
+        <h1>One last thing</h1>
+        <p class="subtitle">Tell us who you are so we can personalize your follow-ups and recap emails.</p>
+        <div class="form-error" id="profile-error"></div>
+        <form id="profile-form" autocomplete="on">
+            <div class="form-field">
+                <label for="full_name">Full name</label>
+                <input type="text" id="full_name" name="full_name" class="form-input" autocomplete="name" required>
+            </div>
+            <div class="form-field">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" class="form-input" autocomplete="email" required>
+                <div class="form-help">We'll use this as a backup if SMS ever stops working, and to send you recap drafts.</div>
+            </div>
+            <label class="form-checkbox">
+                <input type="checkbox" name="agree" id="agree" required>
+                <span>I agree to the <a href="/terms" target="_blank">Terms of Service</a> and <a href="/privacy" target="_blank">Privacy Policy</a>.</span>
+            </label>
+            <button type="submit" class="btn btn-primary btn-full" id="profile-submit">Continue to Videoscriber</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(() => {
+    const form = document.getElementById('profile-form');
+    const error = document.getElementById('profile-error');
+    const submit = document.getElementById('profile-submit');
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        error.textContent = ''; error.classList.remove('active');
+        submit.disabled = true; submit.textContent = 'Saving…';
+        try {
+            const body = new URLSearchParams({
+                full_name: form.full_name.value,
+                email: form.email.value,
+                agree: form.agree.checked ? 'on' : '',
+            });
+            const res = await fetch('/auth/complete-profile', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body,
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.detail || data.error || 'Could not save profile');
+            window.location.assign(data.next || '/app');
+        } catch (err) {
+            error.textContent = err.message; error.classList.add('active');
+            submit.disabled = false; submit.textContent = 'Continue to Videoscriber';
+        }
+    });
+})();
+</script>
+{% endblock %}

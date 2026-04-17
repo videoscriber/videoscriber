@@ -1,0 +1,170 @@
+{% extends "_public_base.html" %}
+{% block title %}{% if mode == 'signup' %}Sign up{% else %}Log in{% endif %} — Videoscriber{% endblock %}
+{% block nav %}
+    {% if mode == 'signup' %}
+    <a href="/login">Log in</a>
+    {% else %}
+    <a href="/signup" class="btn btn-primary btn-sm">Get started</a>
+    {% endif %}
+{% endblock %}
+{% block content %}
+<div class="auth-wrapper">
+    <div class="auth-card">
+        <div id="step-phone" class="auth-step active">
+            <h1>{% if mode == 'signup' %}Create your account{% else %}Welcome back{% endif %}</h1>
+            <p class="subtitle">
+                {% if mode == 'signup' %}Enter your US phone number. We'll text you a code to get started.{% else %}Enter your phone number and we'll text you a sign-in code.{% endif %}
+            </p>
+            <div class="form-error" id="phone-error"></div>
+            <form id="phone-form" autocomplete="on">
+                <div class="form-field">
+                    <label for="phone">Phone number</label>
+                    <input type="tel" id="phone" name="phone" class="form-input" placeholder="(305) 555-0123" autocomplete="tel-national" required>
+                    <div class="form-help">US numbers only. Standard SMS rates may apply.</div>
+                </div>
+                <button type="submit" class="btn btn-primary btn-full" id="phone-submit">Send code</button>
+            </form>
+            <p class="auth-meta">
+                {% if mode == 'signup' %}Already have an account? <a href="/login">Log in</a>{% else %}New to Videoscriber? <a href="/signup">Create an account</a>{% endif %}
+            </p>
+        </div>
+
+        <div id="step-otp" class="auth-step">
+            <h1>Enter your code</h1>
+            <p class="subtitle">We sent a 6-digit code to <strong id="otp-destination">your phone</strong>.</p>
+            <div class="form-error" id="otp-error"></div>
+            <form id="otp-form" autocomplete="off">
+                <div class="form-field">
+                    <label for="otp-code">Verification code</label>
+                    <input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" id="otp-code" name="code" class="form-input otp-input" placeholder="••••••" required autofocus>
+                </div>
+                <button type="submit" class="btn btn-primary btn-full" id="otp-submit">Verify &amp; continue</button>
+            </form>
+            <p class="auth-meta">
+                <button type="button" class="auth-link-btn" id="resend-btn">Resend code</button>
+                <span id="email-fallback-wrapper" hidden>
+                    &nbsp;·&nbsp;
+                    <button type="button" class="auth-link-btn" id="email-fallback-btn">Email me a code instead</button>
+                </span>
+                <br><br>
+                <button type="button" class="auth-link-btn" id="change-phone-btn">Use a different number</button>
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(() => {
+    const stepPhone = document.getElementById('step-phone');
+    const stepOtp = document.getElementById('step-otp');
+    const phoneForm = document.getElementById('phone-form');
+    const phoneInput = document.getElementById('phone');
+    const phoneError = document.getElementById('phone-error');
+    const phoneSubmit = document.getElementById('phone-submit');
+    const otpForm = document.getElementById('otp-form');
+    const otpInput = document.getElementById('otp-code');
+    const otpError = document.getElementById('otp-error');
+    const otpSubmit = document.getElementById('otp-submit');
+    const otpDestination = document.getElementById('otp-destination');
+    const resendBtn = document.getElementById('resend-btn');
+    const emailFallbackBtn = document.getElementById('email-fallback-btn');
+    const emailFallbackWrap = document.getElementById('email-fallback-wrapper');
+    const changePhoneBtn = document.getElementById('change-phone-btn');
+
+    let currentPhone = '';
+    let channel = 'sms'; // 'sms' or 'email'
+
+    const showError = (el, msg) => { el.textContent = msg; el.classList.add('active'); };
+    const clearError = (el) => { el.textContent = ''; el.classList.remove('active'); };
+    const showStep = (which) => {
+        stepPhone.classList.toggle('active', which === 'phone');
+        stepOtp.classList.toggle('active', which === 'otp');
+        if (which === 'otp') setTimeout(() => otpInput.focus(), 60);
+    };
+
+    async function sendOtp(endpoint, phone) {
+        const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({ phone }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || data.error || 'Could not send code');
+        return data;
+    }
+
+    phoneForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        clearError(phoneError);
+        phoneSubmit.disabled = true;
+        phoneSubmit.textContent = 'Sending…';
+        try {
+            const data = await sendOtp('/auth/send-otp', phoneInput.value);
+            currentPhone = phoneInput.value;
+            channel = 'sms';
+            otpDestination.textContent = data.phone_masked;
+            emailFallbackWrap.hidden = !data.email_fallback_available;
+            showStep('otp');
+        } catch (err) {
+            showError(phoneError, err.message);
+        } finally {
+            phoneSubmit.disabled = false;
+            phoneSubmit.textContent = 'Send code';
+        }
+    });
+
+    otpForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        clearError(otpError);
+        otpSubmit.disabled = true;
+        otpSubmit.textContent = 'Verifying…';
+        try {
+            const endpoint = channel === 'email' ? '/auth/verify-email-otp' : '/auth/verify-otp';
+            const res = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ phone: currentPhone, code: otpInput.value }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.detail || data.error || 'Incorrect code');
+            window.location.assign(data.next || '/app');
+        } catch (err) {
+            showError(otpError, err.message);
+            otpSubmit.disabled = false;
+            otpSubmit.textContent = 'Verify & continue';
+        }
+    });
+
+    resendBtn.addEventListener('click', async () => {
+        clearError(otpError);
+        try {
+            const endpoint = channel === 'email' ? '/auth/send-email-otp' : '/auth/send-otp';
+            await sendOtp(endpoint, currentPhone);
+            resendBtn.textContent = 'Code resent';
+            setTimeout(() => { resendBtn.textContent = 'Resend code'; }, 3000);
+        } catch (err) {
+            showError(otpError, err.message);
+        }
+    });
+
+    emailFallbackBtn.addEventListener('click', async () => {
+        clearError(otpError);
+        try {
+            const data = await sendOtp('/auth/send-email-otp', currentPhone);
+            channel = 'email';
+            otpDestination.textContent = data.email_masked || 'your email';
+            emailFallbackWrap.hidden = true;
+        } catch (err) {
+            showError(otpError, err.message);
+        }
+    });
+
+    changePhoneBtn.addEventListener('click', () => {
+        clearError(phoneError);
+        showStep('phone');
+        otpInput.value = '';
+    });
+})();
+</script>
+{% endblock %}

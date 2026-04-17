@@ -30,6 +30,54 @@ CREATE TABLE IF NOT EXISTS transcriptions (
     created_at TEXT NOT NULL,
     completed_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    phone TEXT UNIQUE NOT NULL,
+    full_name TEXT,
+    email TEXT,
+    profile_completed_at TEXT,
+    consented_tos_at TEXT,
+    consented_tos_version TEXT,
+    consented_privacy_at TEXT,
+    consented_privacy_version TEXT,
+    disabled_at TEXT,
+    created_at TEXT NOT NULL,
+    last_login_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
+CREATE TABLE IF NOT EXISTS sessions (
+    token TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    ip_address TEXT,
+    user_agent TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+
+CREATE TABLE IF NOT EXISTS email_otp_codes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    phone TEXT NOT NULL,
+    email TEXT NOT NULL,
+    code_hash TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    used_at TEXT,
+    attempts INTEGER DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_email_otp_phone ON email_otp_codes(phone, used_at);
+
+CREATE TABLE IF NOT EXISTS otp_rate_limits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    key TEXT NOT NULL,
+    action TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_otp_rate_key ON otp_rate_limits(key, action, created_at);
 """
 
 MIGRATION_COLUMNS = [
@@ -49,7 +97,7 @@ MIGRATION_COLUMNS = [
 async def init_db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(SCHEMA)
+        await db.executescript(SCHEMA)
 
         # Migrate existing databases: add new columns if missing
         async with db.execute("PRAGMA table_info(transcriptions)") as cursor:
@@ -65,6 +113,12 @@ async def init_db():
         await db.execute(
             "UPDATE transcriptions SET status = 'error', error_message = 'Interrupted by server restart' "
             "WHERE status IN ('pending', 'extracting', 'transcribing')"
+        )
+
+        # Drop expired sessions on startup
+        await db.execute(
+            "DELETE FROM sessions WHERE expires_at < ?",
+            (datetime.now(timezone.utc).isoformat(),),
         )
         await db.commit()
 

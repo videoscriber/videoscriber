@@ -1,0 +1,41 @@
+{% extends "_public_base.html" %}
+{% block title %}Videoscriber — AI transcription agents that follow up for you{% endblock %}
+{% block content %}
+<section class="hero">
+    <h1>AI transcription agents<br>that follow up for you</h1>
+    <p class="lead">
+        Videoscriber automates the boring half of every meeting — transcription, recap drafting, and follow-up emails —
+        so you can stop taking notes and start keeping everyone aligned on next steps.
+    </p>
+    <div class="hero-cta">
+        <a href="/signup" class="btn btn-primary btn-lg">Get started — it's free</a>
+        <a href="https://github.com/videoscriber/videoscriber" rel="noopener" target="_blank" class="btn btn-ghost btn-lg">View on GitHub</a>
+    </div>
+    <div class="hero-pills">
+        <span class="hero-pill">No lock-in — open source</span>
+        <span class="hero-pill">Bring your own AI keys</span>
+        <span class="hero-pill">Cloud backup optional</span>
+    </div>
+</section>
+
+<section class="audiences">
+    <div class="audience-card">
+        <h3>For the developer community</h3>
+        <p>Videoscriber is open source. Fork it, self-host it, extend it. The desktop app is an orchestrator — bring your own OpenAI and AssemblyAI keys, keep data on your machine, ship features we haven't built yet.</p>
+        <ul>
+            <li>MIT-licensed FastAPI + Electron codebase</li>
+            <li>Plug-in transcription providers</li>
+            <li>Self-hostable in Docker in under a minute</li>
+        </ul>
+    </div>
+    <div class="audience-card">
+        <h3>For the enterprise</h3>
+        <p>Skip the expensive, clunky video platforms. Videoscriber is a focused productivity tool that drops into your workflow: upload a recording, get a transcript and recap, send a follow-up email to attendees — all with one agent keeping the thread alive.</p>
+        <ul>
+            <li>Transcription with speaker diarization</li>
+            <li>Auto-drafted recap emails with next steps</li>
+            <li>90-day cloud backup with strict data handling</li>
+        </ul>
+    </div>
+</section>
+{% endblock %}

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Videoscriber{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/public.css">
+</head>
+<body class="public-body">
+    <header class="public-header">
+        <a href="/" class="public-brand" aria-label="Videoscriber home">
+            {% include 'partials/logo.svg' %}
+        </a>
+        <nav class="public-nav">
+            {% block nav %}
+            <a href="/login">Log in</a>
+            <a href="/signup" class="btn btn-primary btn-sm">Get started</a>
+            {% endblock %}
+        </nav>
+    </header>
+    <main class="public-main">{% block content %}{% endblock %}</main>
+    <footer class="public-footer">
+        <div class="public-footer-inner">
+            <div class="public-footer-brand">
+                {% include 'partials/logo.svg' %}
+                <span class="muted">&copy; 2026 Videoscriber LLC</span>
+            </div>
+            <nav class="public-footer-links">
+                <a href="/terms">Terms</a>
+                <a href="/privacy">Privacy</a>
+                <a href="https://github.com/videoscriber/videoscriber" rel="noopener" target="_blank">GitHub</a>
+                <a href="mailto:legal@videoscriber.ai">Contact</a>
+            </nav>
+        </div>
+    </footer>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

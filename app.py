@@ -10,12 +10,14 @@ from urllib.parse import quote
 
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, Response
+from fastapi import Depends, FastAPI, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
+import auth
+import auth_routes
 import database as db
 from transcriber import process_transcription
 
@@ -87,17 +89,58 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+app.include_router(auth_routes.router)
+
+
+@app.middleware("http")
+async def gate_api_behind_session(request: Request, call_next):
+    """Require a valid session for /api/* routes. /api/sync/* uses its own key auth."""
+    path = request.url.path
+    if path.startswith("/api/") and not path.startswith("/api/sync"):
+        user = await auth.current_user(request)
+        if not user:
+            return JSONResponse({"error": "Authentication required"}, status_code=401)
+    return await call_next(request)
 
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
-    return templates.TemplateResponse(request, "index.html")
+async def landing(request: Request):
+    user = await auth.current_user(request)
+    if user:
+        return RedirectResponse("/app", status_code=303)
+    return templates.TemplateResponse(request, "landing.html")
+
+
+@app.get("/app", response_class=HTMLResponse)
+async def app_home(request: Request):
+    user = await auth.current_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    if not user.get("profile_completed_at"):
+        return RedirectResponse("/signup/profile", status_code=303)
+    return templates.TemplateResponse(request, "index.html", {"user": user})
+
+
+@app.get("/terms", response_class=HTMLResponse)
+async def terms_page(request: Request):
+    return templates.TemplateResponse(request, "legal/terms.html")
+
+
+@app.get("/privacy", response_class=HTMLResponse)
+async def privacy_page(request: Request):
+    return templates.TemplateResponse(request, "legal/privacy.html")
 
 
 @app.get("/api/config")
-async def get_config():
+async def get_config(user: dict = Depends(auth.require_user)):
     return {
         "diarization_available": bool(os.getenv("ASSEMBLYAI_API_KEY")),
+        "user": {
+            "id": user["user_id"],
+            "full_name": user.get("full_name"),
+            "email": user.get("email"),
+            "phone": user["phone"],
+        },
     }
 
 
