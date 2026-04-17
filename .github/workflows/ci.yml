@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev, staging, master]
   pull_request:
-    branches: [main]
+    branches: [main, dev, staging, master]
 
 jobs:
   lint-and-test:
@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Need history + refs so check_schema_migrations can diff against main.
+          # Need history + refs so check_schema_migrations can diff against dev.
           fetch-depth: 0
 
       - name: Set up Python

@@ -3,7 +3,8 @@
 auto-coverage (_migrate_enforce_unique_indexes) or a sibling _migrate_*
 function in the same diff.
 
-Compares `database.py` at HEAD to `origin/main`. Tightenings we scan for:
+Compares `database.py` at HEAD to the integration branch (default
+`origin/dev`, override with $SCHEMA_DIFF_BASE). Tightenings we scan for:
 
   - UNIQUE INDEX            — auto-covered by _migrate_enforce_unique_indexes
   - CHECK constraints       — require a per-case _migrate_* helper
@@ -18,16 +19,19 @@ Exit 0 = pass, 1 = fail. Prints an actionable report either way.
 """
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
 
+BASE_REF = os.environ.get("SCHEMA_DIFF_BASE", "origin/dev")
 
-def git_show_main(path: str) -> str:
-    """Return the contents of `path` on origin/main, or empty if unavailable."""
+
+def git_show_base(path: str) -> str:
+    """Return the contents of `path` on the base ref, or empty if unavailable."""
     try:
         return subprocess.check_output(
-            ["git", "show", f"origin/main:{path}"],
+            ["git", "show", f"{BASE_REF}:{path}"],
             stderr=subprocess.DEVNULL,
         ).decode()
     except subprocess.CalledProcessError:
@@ -95,14 +99,14 @@ def new_migrate_functions(old_code: str, new_code: str) -> set[str]:
 
 
 def main() -> int:
-    old_code = git_show_main("database.py")
+    old_code = git_show_base("database.py")
     try:
         new_code = open("database.py").read()
     except FileNotFoundError:
         print("database.py not found at HEAD — skipping.")
         return 0
     if not old_code:
-        # First commit, or origin/main missing — nothing to diff.
+        # First commit, or base ref missing — nothing to diff.
         return 0
 
     schema_hits = detect_schema_tightenings(
@@ -119,7 +123,7 @@ def main() -> int:
 
     unique_only = all(cat == "unique_index" for cat, _ in hits)
     if unique_only:
-        print("Schema diff vs origin/main:")
+        print(f"Schema diff vs {BASE_REF}:")
         for _, line in hits:
             print(f"  + UNIQUE INDEX  {line}")
         print("\nAuto-covered by _migrate_enforce_unique_indexes — no action needed.")
@@ -129,7 +133,7 @@ def main() -> int:
     # acknowledgement for CHECK/NOT NULL tightenings.
     GENERIC = {"_migrate_enforce_unique_indexes"}
     new_migrators = new_migrate_functions(old_code, new_code) - GENERIC
-    print("Schema diff vs origin/main introduces tightenings:")
+    print(f"Schema diff vs {BASE_REF} introduces tightenings:")
     for category, line in hits:
         print(f"  + [{category}]  {line}")
     print()
