@@ -516,6 +516,19 @@ async def get_transcription(id: str) -> dict | None:
             return dict(row) if row else None
 
 
+async def list_all_transcriptions_for_cleanup() -> list[dict]:
+    """Cross-user SELECT used only by app._cleanup_orphans on startup. Returns
+    the minimum shape the sweeper needs. Don't reach for this anywhere near a
+    request handler — scoped reads must go through list_transcriptions."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT id, status, video_path FROM transcriptions"
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [dict(row) for row in rows]
+
+
 async def list_transcriptions(user_id: str | None = None) -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row

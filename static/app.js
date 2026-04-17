@@ -303,6 +303,7 @@ function renderPostprocessBanner(data) {
     items.push({
       label: 'Video enhancement failed — original video kept',
       details: data.enhancement_error || null,
+      hint: data.enhancement_error ? null : 'Details not captured on this run — re-upload to diagnose.',
     });
   }
   if (!items.length) {
@@ -318,7 +319,10 @@ function renderPostprocessBanner(data) {
     const details = it.details
       ? `<details class="postprocess-details"><summary>Show details</summary><pre>${escapeHtml(it.details)}</pre></details>`
       : '';
-    return `<div class="postprocess-warning-item"><span>${escapeHtml(it.label)}</span>${retry}</div>${details}`;
+    const hint = it.hint
+      ? `<div class="postprocess-hint">${escapeHtml(it.hint)}</div>`
+      : '';
+    return `<div class="postprocess-warning-item"><span>${escapeHtml(it.label)}</span>${retry}</div>${details}${hint}`;
   }).join('');
   const retryBtn = banner.querySelector('[data-retry="recap"]');
   if (retryBtn) {

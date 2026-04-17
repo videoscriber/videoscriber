@@ -218,7 +218,7 @@ async def _cleanup_orphans() -> None:
     re-associate orphaned originals with rows that were interrupted but
     have no video_path set, so retry remains possible.
     """
-    records = await db.list_transcriptions()
+    records = await db.list_all_transcriptions_for_cleanup()
     by_id = {r["id"]: r for r in records}
 
     audio_removed = 0
@@ -799,7 +799,12 @@ async def send_email(
     user: dict = Depends(auth.require_user),
 ):
     import html as _html
-    from email_service import send_recap_email
+    from email_service import (
+        FROM_ADDRESS,
+        build_from_with_name,
+        extract_from_email,
+        send_recap_email,
+    )
 
     to = _validate_email(to)
     subject = _reject_crlf(subject.strip(), "subject")
@@ -810,12 +815,13 @@ async def send_email(
     if len(body) > MAX_EMAIL_BODY_LEN:
         raise HTTPException(400, f"Body too long (max {MAX_EMAIL_BODY_LEN} chars)")
 
-    # Append user signature + Videoscriber branding. Free users cannot remove
-    # the branding; only Plus users can hide it via their settings.
     plan = user.get("plan") or "free"
     hide_branding = bool(user.get("email_branding_hidden")) and plan == "plus"
     signature = (user.get("email_signature") or "").strip()
+    full_name = (user.get("full_name") or "").strip()
 
+    # Plain-text fallback — blank line between body, signature, and footer so
+    # text-only clients still feel intentional.
     text_parts = [body.rstrip()]
     if signature:
         text_parts.append(signature)
@@ -823,27 +829,52 @@ async def send_email(
         text_parts.append("\u2728 Sent with videoscriber.ai (https://videoscriber.ai)")
     body_text = "\n\n".join(text_parts)
 
-    def _p(text: str) -> str:
-        return "".join(f"<p>{_html.escape(line) or '&nbsp;'}</p>" for line in text.split("\n"))
-    html_parts = [f"<div>{_p(body.rstrip())}</div>"]
-    if signature:
-        html_parts.append(f"<div style='margin-top:16px;color:#444'>{_p(signature)}</div>")
-    if not hide_branding:
-        html_parts.append(
-            "<div style='margin-top:24px;color:#888;font-size:12px'>"
-            "\u2728 Sent with <a href='https://videoscriber.ai' "
-            "style='color:#8B5CF6;text-decoration:none'>videoscriber.ai</a>"
-            "</div>"
+    def _paragraphs(text: str) -> str:
+        return "".join(
+            f'<p style="margin:0 0 14px;">{_html.escape(line) or "&nbsp;"}</p>'
+            for line in text.split("\n")
         )
-    body_html = "".join(html_parts)
 
-    from_override = _resolve_from_address(user)
+    content = [f'<div>{_paragraphs(body.rstrip())}</div>']
+    if signature:
+        content.append(
+            '<div style="margin-top:24px;padding-top:16px;'
+            'border-top:1px solid #e5e7eb;color:#1f2330;">'
+            f'{_paragraphs(signature)}</div>'
+        )
+    if not hide_branding:
+        content.append(
+            '<div style="margin-top:20px;padding-top:12px;'
+            'border-top:1px solid #eef0f4;color:#94a3b8;font-size:12px;'
+            'line-height:1.5;">'
+            '\u2728 Sent with '
+            '<a href="https://videoscriber.ai" '
+            'style="color:#8B5CF6;text-decoration:none;font-weight:500;">'
+            'videoscriber.ai</a>'
+            '</div>'
+        )
+    body_html = (
+        '<div style="'
+        "font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',"
+        'Roboto,Helvetica,Arial,sans-serif;'
+        'font-size:15px;line-height:1.6;color:#1f2330;'
+        'max-width:640px;">'
+        + "".join(content)
+        + '</div>'
+    )
+
+    # From-header: user's name + verified sending address (custom domain when
+    # available, otherwise the default Resend domain).
+    base_from = _resolve_from_address(user) or FROM_ADDRESS
+    from_override = build_from_with_name(full_name, extract_from_email(base_from))
     await send_recap_email(to, subject, body_text, body_html, from_override=from_override)
     return {"ok": True}
 
 
 def _resolve_from_address(user: dict) -> str | None:
-    """Return a Plus user's verified custom-domain from-address, else None."""
+    """Return a Plus user's verified custom-domain from-address, else None.
+    The send_email route decorates this with the user's name via
+    email_service.build_from_with_name; we just pick the right sending host."""
     if (user.get("plan") or "free") != "plus":
         return None
     if user.get("custom_email_domain_status") != "verified":
@@ -851,8 +882,7 @@ def _resolve_from_address(user: dict) -> str | None:
     domain = (user.get("custom_email_domain") or "").strip()
     if not domain:
         return None
-    name = (user.get("full_name") or "").strip() or "VideoScriber"
-    return f"{name} <noreply@{domain}>"
+    return f"noreply@{domain}"
 
 
 # ============================================================

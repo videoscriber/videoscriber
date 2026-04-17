@@ -89,7 +89,7 @@ Videoscriber &middot; https://videoscriber.ai">{{ user.email_signature or '' }}<
         <div class="form-error" id="domain-error"></div>
         <div class="settings-success" id="domain-success"></div>
 
-        <div id="domain-empty" hidden>
+        <div id="domain-empty">
             <form id="domain-add-form">
                 <div class="form-field">
                     <label for="domain_input">Domain</label>
@@ -259,8 +259,17 @@ Videoscriber &middot; https://videoscriber.ai">{{ user.email_signature or '' }}<
         const load = async () => {
             try {
                 const res = await fetch('/api/email-domain');
-                if (res.ok) render(await res.json());
-            } catch {}
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) {
+                    console.warn('Domain load failed', res.status, data);
+                    showErr(data.detail || `Could not load domain state (${res.status})`);
+                    return;
+                }
+                render(data);
+            } catch (err) {
+                console.warn('Domain load error', err);
+                showErr(err.message || 'Could not load domain state');
+            }
         };
 
         addForm.addEventListener('submit', async (e) => {
@@ -274,7 +283,10 @@ Videoscriber &middot; https://videoscriber.ai">{{ user.email_signature or '' }}<
                     body,
                 });
                 const data = await res.json().catch(() => ({}));
-                if (!res.ok) throw new Error(data.detail || 'Could not add domain');
+                if (!res.ok) {
+                    console.warn('Add domain failed', res.status, data);
+                    throw new Error(data.detail || `Could not add domain (${res.status})`);
+                }
                 render(data);
                 showOk('Domain added. Add the DNS records below, then click Verify.');
             } catch (err) {
