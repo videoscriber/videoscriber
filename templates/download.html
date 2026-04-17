@@ -1,0 +1,107 @@
+{% extends "_public_base.html" %}
+{% block title %}Download Videoscriber for Mac{% endblock %}
+{% block meta_description %}Download the open-source Videoscriber desktop app for macOS. Bring your own API keys, run transcriptions locally, keep every recording on your machine.{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="/static/landing.css">{% endblock %}
+
+{% block content %}
+<div class="landing">
+    <div class="ambient ambient-3" aria-hidden="true"></div>
+
+<section class="hero" style="padding-top: 60px;">
+    <div class="hero-chip">
+        <span class="chip-dot"></span>
+        <span>Open source &mdash; MIT licensed</span>
+    </div>
+    <h1 class="hero-title">Run Videoscriber <span class="grad">on your own Mac.</span></h1>
+    <p class="hero-lead">
+        Bring your own OpenAI and AssemblyAI keys. Transcripts stay on your machine. No cloud backup, no telemetry, no account required.
+    </p>
+    <div class="hero-cta">
+        {% if release and release.dmg_assets %}
+            {% set dmg = release.dmg_assets[0] %}
+            <a href="{{ dmg.url }}" class="btn-glow" download>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Download for Mac &mdash; {{ release.tag }}
+            </a>
+            <a href="{{ release.html_url }}" rel="noopener" target="_blank" class="btn-glass">
+                All releases &amp; versions
+            </a>
+        {% else %}
+            <a href="https://github.com/videoscriber/videoscriber/releases" rel="noopener" target="_blank" class="btn-glow">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                See releases on GitHub
+            </a>
+            <span class="hero-pill">Mac build coming with the next release tag</span>
+        {% endif %}
+    </div>
+</section>
+
+<section class="section reveal">
+    <div class="section-kicker">Prerequisites</div>
+    <h2 class="section-title">What you need <span class="grad">before first launch.</span></h2>
+    <p class="section-lead">The desktop app is a developer-focused build &mdash; it expects Python and ffmpeg on your machine, plus your own API keys. We&rsquo;ll bundle these in a future release.</p>
+
+    <div class="features-grid">
+        <article class="feature-card">
+            <div class="feature-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 18l6-6-6-6"/><path d="M8 6l-6 6 6 6"/></svg>
+            </div>
+            <h3>Python 3.12</h3>
+            <p><code>brew install python@3.12</code> &mdash; the app launches a local Python backend and expects it on your <code>PATH</code>.</p>
+        </article>
+        <article class="feature-card">
+            <div class="feature-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+            </div>
+            <h3>ffmpeg</h3>
+            <p><code>brew install ffmpeg</code> &mdash; required to enhance and chunk audio tracks for transcription.</p>
+        </article>
+        <article class="feature-card">
+            <div class="feature-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </div>
+            <h3>Your own API keys</h3>
+            <p>OpenAI key (GPT for recap drafting) and AssemblyAI key (transcription). Both stay on your machine &mdash; we never see them.</p>
+        </article>
+    </div>
+</section>
+
+<section class="section how-it-works reveal">
+    <div class="section-kicker">Install</div>
+    <h2 class="section-title">Three steps <span class="grad">on first launch.</span></h2>
+
+    <div class="steps">
+        <article class="step">
+            <div class="step-num">01</div>
+            <h3>Install + right-click Open</h3>
+            <p>Double-click the <code>.dmg</code>, drag <strong>Videoscriber</strong> into <strong>Applications</strong>. On first launch, <strong>right-click</strong> (or Ctrl-click) the app and choose <strong>Open</strong> &mdash; Gatekeeper blocks double-click on unsigned apps. One-time macOS prompt; Apple code-signing is on the roadmap.</p>
+        </article>
+        <article class="step">
+            <div class="step-num">02</div>
+            <h3>Run the setup script</h3>
+            <p>Open Terminal and paste:</p>
+            <div class="code-block"><span class="prompt">$</span> bash "/Applications/Videoscriber.app/Contents/Resources/scripts/setup-mac.sh"</div>
+            <p>It creates a per-user Python venv in <code>~/Library/Application Support/Videoscriber</code>, installs the backend dependencies, and prompts for your OpenAI + AssemblyAI keys. Re-run it anytime to update.</p>
+        </article>
+        <article class="step">
+            <div class="step-num">03</div>
+            <h3>Launch the app</h3>
+            <p>Open Videoscriber from Applications. The backend starts on a local port, the window opens, and you&rsquo;re ready to drop a recording.</p>
+        </article>
+    </div>
+</section>
+
+<section class="section reveal">
+    <div class="section-kicker">Prefer the cloud?</div>
+    <h2 class="section-title">We run it for you at <span class="grad">videoscriber.ai.</span></h2>
+    <p class="section-lead">Same app, managed infrastructure, 90-day encrypted backup, and no local setup. Free during beta.</p>
+    <div class="hero-cta" style="justify-content: center; margin-top: 24px;">
+        <a href="/signup" class="btn-glow">
+            Create a free cloud account
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+        </a>
+    </div>
+</section>
+
+</div>
+{% endblock %}

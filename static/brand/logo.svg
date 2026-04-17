@@ -18,10 +18,11 @@
       <stop offset="100%" stop-color="#ddd6fe" />
     </linearGradient>
     <!-- Wordmark gradient stays inside the purple range so it reads on BOTH
-         light and dark page backgrounds. -->
+         light and dark page backgrounds. Uses darker stops than the icon so
+         the wordmark remains readable on near-white light-mode backgrounds. -->
     <linearGradient id="wordGradText" x1="0" y1="12" x2="0" y2="58" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#8b5cf6" />
-      <stop offset="100%" stop-color="#c4b5fd" />
+      <stop offset="0%" stop-color="#6d28d9" />
+      <stop offset="100%" stop-color="#8b5cf6" />
     </linearGradient>
   </defs>
 
