@@ -98,6 +98,17 @@ async def index(request: Request):
 async def get_config():
     return {
         "diarization_available": bool(os.getenv("ASSEMBLYAI_API_KEY")),
+        "max_concurrent_jobs": MAX_CONCURRENT_JOBS,
+    }
+
+
+@app.get("/api/queue")
+async def get_queue():
+    stats = await db.queue_stats()
+    return {
+        "max_concurrent": MAX_CONCURRENT_JOBS,
+        "running": stats["running"],
+        "pending": stats["pending"],
     }
 
 

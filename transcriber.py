@@ -5,7 +5,7 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, APIConnectionError, AuthenticationError, RateLimitError
 
 import database as db
 
@@ -347,6 +347,16 @@ async def _passthrough(val):
     return val
 
 
+def _user_friendly_error(exc: Exception) -> str:
+    if isinstance(exc, RateLimitError):
+        return "OpenAI rate limit reached. Wait a few minutes and retry, or check your API plan limits."
+    if isinstance(exc, AuthenticationError):
+        return "OpenAI authentication failed. Check that OPENAI_API_KEY is valid."
+    if isinstance(exc, APIConnectionError):
+        return "Could not reach OpenAI. Check your network connection and try again."
+    return str(exc)
+
+
 # ============================================================
 # Main transcription pipelines
 # ============================================================
@@ -445,7 +455,7 @@ async def process_transcription(job_id: str, video_path: Path, audio_dir: Path, 
         await db.update_transcription(
             job_id,
             status="error",
-            error_message=str(e),
+            error_message=_user_friendly_error(e),
             video_path=str(video_path) if video_path.exists() else None,
         )
 
@@ -553,7 +563,7 @@ async def process_transcription_assemblyai(
         await db.update_transcription(
             job_id,
             status="error",
-            error_message=str(e),
+            error_message=_user_friendly_error(e),
             video_path=str(video_path) if video_path.exists() else None,
         )
 
