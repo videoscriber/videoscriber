@@ -414,10 +414,20 @@ async def vtt_inline(job_id: str, user: dict = Depends(auth.require_user)):
     if record["status"] != "done":
         raise HTTPException(400, "Transcription not complete")
 
-    return Response(
-        content=record["transcript_vtt"] or "",
-        media_type="text/vtt",
-    )
+    # Regenerate from segments_json on each call so caption-chunking rules
+    # (short cues, single-line display) apply even to pre-existing transcripts.
+    import json as _json
+    from transcriber import generate_vtt
+    if record.get("transcript_segments_json"):
+        try:
+            segments = _json.loads(record["transcript_segments_json"]) or []
+            vtt = generate_vtt(segments)
+        except Exception:
+            vtt = record.get("transcript_vtt") or ""
+    else:
+        vtt = record.get("transcript_vtt") or ""
+
+    return Response(content=vtt, media_type="text/vtt")
 
 
 @app.patch("/api/transcriptions/{job_id}/speakers")

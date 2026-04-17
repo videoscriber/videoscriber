@@ -179,15 +179,63 @@ def generate_srt(segments: list[dict]) -> str:
     return "\n".join(lines)
 
 
+MAX_CUE_CHARS = 70   # target per-cue width so captions stay on one line
+MAX_CUE_SECONDS = 4.0
+
+
+def _split_for_captions(text: str, max_chars: int = MAX_CUE_CHARS) -> list[str]:
+    """Break text into short word-aligned chunks for single-line caption display."""
+    words = text.strip().split()
+    if not words:
+        return []
+    chunks: list[str] = []
+    current: list[str] = []
+    current_len = 0
+    for word in words:
+        w = len(word) + (1 if current else 0)
+        if current_len + w > max_chars and current:
+            chunks.append(" ".join(current))
+            current = [word]
+            current_len = len(word)
+        else:
+            current.append(word)
+            current_len += w
+    if current:
+        chunks.append(" ".join(current))
+    return chunks
+
+
 def generate_vtt(segments: list[dict]) -> str:
+    """Produce WebVTT with short cues (~70 chars, ~4s max each) so that caption
+    display stays on a single line and never overtakes the video frame."""
     lines = ["WEBVTT", ""]
     for seg in segments:
-        start = format_timestamp_vtt(seg["start"])
-        end = format_timestamp_vtt(seg["end"])
+        seg_start = float(seg.get("start") or 0)
+        seg_end = float(seg.get("end") or seg_start)
+        duration = max(seg_end - seg_start, 0.001)
+        text = (seg.get("text") or "").strip()
+        if not text:
+            continue
         speaker_prefix = f"[{seg['speaker']}] " if seg.get("speaker") else ""
-        lines.append(f"{start} --> {end}")
-        lines.append(f"{speaker_prefix}{seg['text'].strip()}")
-        lines.append("")
+        chunks = _split_for_captions(text)
+        if not chunks:
+            continue
+        # Apportion duration proportionally by chunk length, clamped so each
+        # cue stays under MAX_CUE_SECONDS when possible.
+        total_chars = sum(len(c) for c in chunks)
+        t = seg_start
+        for i, chunk in enumerate(chunks):
+            share = len(chunk) / total_chars if total_chars else 1.0
+            raw = duration * share
+            chunk_dur = min(raw, MAX_CUE_SECONDS)
+            chunk_end = min(t + chunk_dur, seg_end) if i < len(chunks) - 1 else seg_end
+            if chunk_end <= t:
+                chunk_end = t + 0.01
+            prefix = speaker_prefix if i == 0 else ""
+            lines.append(f"{format_timestamp_vtt(t)} --> {format_timestamp_vtt(chunk_end)}")
+            lines.append(f"{prefix}{chunk}")
+            lines.append("")
+            t = chunk_end
     return "\n".join(lines)
 
 
