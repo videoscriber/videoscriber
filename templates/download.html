@@ -68,25 +68,23 @@
 
 <section class="section how-it-works reveal">
     <div class="section-kicker">Install</div>
-    <h2 class="section-title">Three steps <span class="grad">on first launch.</span></h2>
+    <h2 class="section-title">Three clicks <span class="grad">to your first transcript.</span></h2>
 
     <div class="steps">
         <article class="step">
             <div class="step-num">01</div>
-            <h3>Install + right-click Open</h3>
-            <p>Double-click the <code>.dmg</code>, drag <strong>Videoscriber</strong> into <strong>Applications</strong>. On first launch, <strong>right-click</strong> (or Ctrl-click) the app and choose <strong>Open</strong> &mdash; Gatekeeper blocks double-click on unsigned apps. One-time macOS prompt; Apple code-signing is on the roadmap.</p>
+            <h3>Drag to Applications, right-click Open</h3>
+            <p>Open the <code>.dmg</code>, drag <strong>Videoscriber</strong> into <strong>Applications</strong>. First launch only: <strong>right-click</strong> the app and choose <strong>Open</strong> &mdash; Gatekeeper blocks double-click on unsigned apps. One-time prompt; Apple code-signing is on the roadmap.</p>
         </article>
         <article class="step">
             <div class="step-num">02</div>
-            <h3>Run the setup script</h3>
-            <p>Open Terminal and paste:</p>
-            <div class="code-block"><span class="prompt">$</span> bash "/Applications/Videoscriber.app/Contents/Resources/scripts/setup-mac.sh"</div>
-            <p>It creates a per-user Python venv in <code>~/Library/Application Support/Videoscriber</code>, installs the backend dependencies, and prompts for your OpenAI + AssemblyAI keys. Re-run it anytime to update.</p>
+            <h3>Wait one minute</h3>
+            <p>On first launch the app sets up its local Python environment and installs dependencies automatically (~1 min). Nothing for you to do &mdash; just wait for the window.</p>
         </article>
         <article class="step">
             <div class="step-num">03</div>
-            <h3>Launch the app</h3>
-            <p>Open Videoscriber from Applications. The backend starts on a local port, the window opens, and you&rsquo;re ready to drop a recording.</p>
+            <h3>Paste your API keys</h3>
+            <p>The app opens on a setup screen. Paste your OpenAI and AssemblyAI keys (both free to sign up), hit <strong>Save keys</strong>, then quit and reopen Videoscriber once. You&rsquo;re ready to drop a recording.</p>
         </article>
     </div>
 </section>

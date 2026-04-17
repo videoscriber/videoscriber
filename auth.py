@@ -118,6 +118,22 @@ async def get_user(user_id: str) -> dict | None:
             return dict(row) if row else None
 
 
+async def ensure_desktop_user() -> dict:
+    """Seed the synthetic single-user account used by desktop mode."""
+    existing = await get_user(DESKTOP_USER_ID)
+    if existing:
+        return existing
+    now = datetime.now(timezone.utc).isoformat()
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO users (id, full_name, profile_completed_at, plan, created_at) "
+            "VALUES (?, ?, ?, 'plus', ?)",
+            (DESKTOP_USER_ID, "You", now, now),
+        )
+        await db.commit()
+    return await get_user(DESKTOP_USER_ID)
+
+
 async def create_user(phone: str) -> dict:
     user_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
@@ -391,8 +407,15 @@ async def verify_email_otp(phone: str, code: str) -> bool:
 
 # ----- FastAPI dependencies --------------------------------------------------
 
+DESKTOP_MODE = os.getenv("VIDEOSCRIBER_DESKTOP") == "1"
+DESKTOP_USER_ID = "desktop-local"
+
+
 async def current_user(request: Request) -> dict | None:
     """Return the authenticated user dict, or None if no valid session.
+
+    In desktop mode, the app is single-user and unauthenticated — we resolve
+    every request to a synthetic "desktop-local" user seeded at startup.
 
     Caches the lookup on `request.state.user` so middleware + route dependencies
     don't each hit the DB.
@@ -400,6 +423,10 @@ async def current_user(request: Request) -> dict | None:
     cached = getattr(request.state, "user", "_unset")
     if cached != "_unset":
         return cached
+    if DESKTOP_MODE:
+        user = await get_user(DESKTOP_USER_ID)
+        request.state.user = user
+        return user
     token = request.cookies.get(SESSION_COOKIE)
     user = await get_session(token) if token else None
     request.state.user = user

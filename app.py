@@ -38,6 +38,8 @@ MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "1000"))
 MAX_CONCURRENT_JOBS = int(os.getenv("MAX_CONCURRENT_JOBS", "2"))
 HOST = os.getenv("HOST", "127.0.0.1")
 PORT = int(os.getenv("PORT", "8000"))
+DESKTOP_MODE = os.getenv("VIDEOSCRIBER_DESKTOP") == "1"
+USER_ENV_PATH = os.getenv("VIDEOSCRIBER_USER_ENV_PATH") or ""
 
 UPLOAD_DIR = Path("uploads")
 AUDIO_DIR = Path("audio")
@@ -149,14 +151,25 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if not OPENAI_API_KEY:
-        raise RuntimeError("OPENAI_API_KEY environment variable is required")
+        if DESKTOP_MODE:
+            logger.warning(
+                "OPENAI_API_KEY not set — transcription features will be unavailable "
+                "until you add keys via Settings."
+            )
+        else:
+            raise RuntimeError("OPENAI_API_KEY environment variable is required")
     if not shutil.which("ffmpeg"):
-        raise RuntimeError("ffmpeg is required but not found on PATH")
+        if DESKTOP_MODE:
+            logger.warning("ffmpeg not found on PATH — transcription will fail until installed.")
+        else:
+            raise RuntimeError("ffmpeg is required but not found on PATH")
 
     UPLOAD_DIR.mkdir(exist_ok=True)
     AUDIO_DIR.mkdir(exist_ok=True)
 
     await db.init_db()
+    if DESKTOP_MODE:
+        await auth.ensure_desktop_user()
     await _cleanup_orphans()
     # Run retention sweep immediately, then hourly in background
     try:
@@ -285,6 +298,12 @@ async def gate_api_behind_session(request: Request, call_next):
 
 @app.get("/", response_class=HTMLResponse)
 async def landing(request: Request):
+    if DESKTOP_MODE:
+        # Single-user local app — skip the marketing landing. Route to key-setup
+        # on first launch, otherwise straight into the app.
+        if not OPENAI_API_KEY or not os.getenv("ASSEMBLYAI_API_KEY"):
+            return RedirectResponse("/setup", status_code=303)
+        return RedirectResponse("/app", status_code=303)
     user = await auth.current_user(request)
     if user:
         return RedirectResponse("/app", status_code=303)
@@ -391,6 +410,48 @@ async def download_page(request: Request):
         "download.html",
         {"release": release},
     )
+
+
+# ---------------------------------------------------------------- desktop setup
+def _desktop_only() -> None:
+    if not DESKTOP_MODE:
+        raise HTTPException(404, "Not available in this mode")
+
+
+@app.get("/setup", response_class=HTMLResponse)
+async def desktop_setup_page(request: Request):
+    _desktop_only()
+    keys_configured = bool(OPENAI_API_KEY) and bool(os.getenv("ASSEMBLYAI_API_KEY"))
+    return templates.TemplateResponse(
+        request,
+        "setup.html",
+        {"keys_configured": keys_configured},
+    )
+
+
+@app.post("/api/desktop/save-keys")
+async def save_desktop_keys(openai_key: str = Form(""), assemblyai_key: str = Form("")):
+    _desktop_only()
+    if not USER_ENV_PATH:
+        raise HTTPException(500, "VIDEOSCRIBER_USER_ENV_PATH not set")
+    # Read existing .env if present, merge + rewrite atomically.
+    existing: dict[str, str] = {}
+    env_path = Path(USER_ENV_PATH)
+    if env_path.exists():
+        for line in env_path.read_text().splitlines():
+            if "=" in line and not line.lstrip().startswith("#"):
+                k, _, v = line.partition("=")
+                existing[k.strip()] = v
+    if openai_key:
+        existing["OPENAI_API_KEY"] = openai_key.strip()
+    if assemblyai_key:
+        existing["ASSEMBLYAI_API_KEY"] = assemblyai_key.strip()
+    env_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = env_path.with_suffix(".env.tmp")
+    tmp.write_text("".join(f"{k}={v}\n" for k, v in existing.items()))
+    os.chmod(tmp, 0o600)
+    tmp.replace(env_path)
+    return JSONResponse({"ok": True, "restart_required": True})
 
 
 @app.get("/health")
@@ -1014,4 +1075,6 @@ async def sync_pull(key: str, since: str = ""):
 
 
 if __name__ == "__main__":
-    uvicorn.run("app:app", host=HOST, port=PORT, reload=True)
+    # Reload mode is for local dev only — in the packaged desktop app the reloader
+    # subprocess fights Electron's lifecycle management.
+    uvicorn.run("app:app", host=HOST, port=PORT, reload=not DESKTOP_MODE)
