@@ -758,3 +758,74 @@
     color: #fff;
     box-shadow: 0 6px 20px -4px rgba(99, 102, 241, 0.5);
 }
+
+/* ============================================
+   SIDEBAR LIST ITEM — inline status + actions + rename
+   ============================================ */
+.item-status-inline {
+  font-weight: 600;
+  font-size: 0.7rem;
+  letter-spacing: 0.02em;
+}
+.item-status-inline.status-done { color: var(--success); }
+.item-status-inline.status-error { color: var(--error); }
+.item-status-inline.status-pending,
+.item-status-inline.status-extracting,
+.item-status-inline.status-transcribing { color: var(--accent); }
+
+.item-meta .meta-sep {
+  color: var(--text-muted);
+  opacity: 0.5;
+  margin: 0 0.2em;
+}
+
+/* Unified action button (rename / retry / delete) */
+.item-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 160ms var(--ease, cubic-bezier(0.16, 1, 0.3, 1)),
+              color 160ms var(--ease, cubic-bezier(0.16, 1, 0.3, 1)),
+              border-color 160ms var(--ease, cubic-bezier(0.16, 1, 0.3, 1));
+}
+.item-action:hover {
+  color: var(--text);
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+.item-action.item-rename:hover { color: var(--accent); }
+.item-action.item-retry:hover { color: var(--accent); border-color: var(--border-accent); }
+.item-action.item-delete:hover { color: var(--error); background: rgba(248, 113, 113, 0.1); border-color: rgba(248, 113, 113, 0.3); }
+
+/* Inline filename rename input inside a sidebar row */
+.item-filename-input {
+  background: var(--surface-1);
+  border: 1px solid var(--border-accent, rgba(129, 140, 248, 0.3));
+  border-radius: 6px;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 3px 8px;
+  width: 100%;
+  box-sizing: border-box;
+  outline: none;
+}
+.item-filename-input:focus {
+  border-color: var(--accent);
+  background: var(--surface-2);
+}
+.item-delete-confirm {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--error);
+}

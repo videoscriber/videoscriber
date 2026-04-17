@@ -171,7 +171,7 @@ function appendListItem(item) {
 function updateListItemContent(el, item) {
   const statusLabel = item.status === 'done' ? 'Done' :
     item.status === 'error' ? 'Error' :
-    item.status === 'extracting' ? 'Extracting...' :
+    item.status === 'extracting' ? 'Extracting…' :
     item.status === 'transcribing' ? `${item.progress}%` :
     'Pending';
 
@@ -180,26 +180,38 @@ function updateListItemContent(el, item) {
     progressHtml = `<div class="item-progress"><progress value="${item.progress}" max="100"></progress></div>`;
   }
 
-  let actionsHtml = '';
-  if (item.status === 'error' && item.video_path) {
-    actionsHtml += `<button class="item-retry" onclick="window._retryJob('${item.id}', event)">Retry</button>`;
-  }
-  actionsHtml += `<button class="item-delete" title="Delete" onclick="window._deleteJob('${item.id}', event)">&times;</button>`;
+  const metaParts = [formatTimeAgo(item.created_at)];
+  if (item.duration_seconds) metaParts.push(formatDuration(item.duration_seconds));
+  metaParts.push(`<span class="item-status-inline status-${item.status}">${statusLabel}</span>`);
+  const metaHtml = metaParts.join(' <span class="meta-sep">•</span> ');
 
   const warningBadge = renderPostprocessWarning(item);
 
+  // Primary right-hand action swaps between retry/rename based on state.
+  let primaryActionHtml = '';
+  if (item.status === 'error' && item.video_path) {
+    primaryActionHtml = `<button class="item-action item-retry" title="Retry" onclick="window._retryJob('${item.id}', event)">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/></svg>
+    </button>`;
+  } else if (item.status === 'done') {
+    primaryActionHtml = `<button class="item-action item-rename" title="Rename" onclick="window._startItemRename('${item.id}', event)">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+    </button>`;
+  }
+
+  const deleteHtml = `<button class="item-action item-delete" title="Delete" onclick="window._deleteJob('${item.id}', event)">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+    </button>`;
+
   el.innerHTML = `
     <div class="item-info">
-      <span class="item-filename">${escapeHtml(item.filename)}</span>
-      <span class="item-meta">
-        ${formatTimeAgo(item.created_at)}${item.duration_seconds ? ' \u2022 ' + formatDuration(item.duration_seconds) : ''}
-      </span>
+      <span class="item-filename" data-id="${item.id}">${escapeHtml(item.filename)}</span>
+      <span class="item-meta">${metaHtml}</span>
     </div>
     <div class="item-right">
       ${progressHtml}
       ${warningBadge}
-      <span class="item-status status-${item.status}">${statusLabel}</span>
-      <div class="item-actions">${actionsHtml}</div>
+      <div class="item-actions">${primaryActionHtml}${deleteHtml}</div>
     </div>
   `;
 }
@@ -320,25 +332,29 @@ function showTranscript(data) {
 // === Delete with confirmation ===
 window._deleteJob = function(jobId, event) {
   event.stopPropagation();
-  const btn = event.target;
+  // Click may land on the SVG or an inner path — normalize to the button
+  const btn = event.currentTarget || event.target.closest('button');
+  if (!btn) return;
 
   if (btn.dataset.confirming === 'true') {
-    // Confirmed
     doDelete(jobId);
     return;
   }
 
+  // Preserve the SVG so we can restore it after the timeout/cancel
+  if (!btn.dataset.originalHtml) {
+    btn.dataset.originalHtml = btn.innerHTML;
+  }
   btn.dataset.confirming = 'true';
-  btn.textContent = 'Sure?';
+  btn.innerHTML = '<span class="item-delete-confirm">Sure?</span>';
   btn.classList.add('confirming');
 
-  const timer = setTimeout(() => {
+  clearTimeout(btn._cancelTimer);
+  btn._cancelTimer = setTimeout(() => {
     btn.dataset.confirming = '';
-    btn.textContent = '\u00d7';
+    btn.innerHTML = btn.dataset.originalHtml;
     btn.classList.remove('confirming');
   }, 3000);
-
-  btn._cancelTimer = timer;
 };
 
 async function doDelete(jobId) {
@@ -367,6 +383,56 @@ window._retryJob = async function(jobId, event) {
   startPolling(jobId);
   refreshList();
   showToast('Retrying transcription...', 'info');
+};
+
+// Inline rename from the sidebar list. Replaces the filename span with an input.
+window._startItemRename = function(jobId, event) {
+  event.stopPropagation();
+  const item = document.querySelector(`.transcription-item[data-id="${jobId}"]`);
+  if (!item) return;
+  const nameEl = item.querySelector('.item-filename');
+  if (!nameEl) return;
+  const original = nameEl.textContent;
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'item-filename-input';
+  input.value = original;
+  input.addEventListener('click', (e) => e.stopPropagation());
+
+  const finish = async (commit) => {
+    const next = input.value.trim();
+    input.replaceWith(nameEl);
+    nameEl.textContent = original;
+    if (!commit || !next || next === original) return;
+    try {
+      const body = new URLSearchParams({ filename: next });
+      const res = await fetch(`/api/transcriptions/${jobId}`, { method: 'PATCH', body });
+      if (!res.ok) throw new Error('Rename failed');
+      const data = await res.json();
+      nameEl.textContent = data.filename || next;
+      // Sync the detail-view title if this is the open transcript
+      if (jobId === activeJobId && activeRecord) {
+        activeRecord.filename = data.filename || next;
+        if (typeof transcriptTitle !== 'undefined' && transcriptTitle) {
+          transcriptTitle.textContent = activeRecord.filename;
+        }
+      }
+    } catch (e) {
+      showToast('Could not rename. Try again.', 'error');
+    }
+  };
+
+  input.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    if (e.key === 'Escape') { finish(false); }
+  });
+  input.addEventListener('blur', () => finish(true));
+
+  nameEl.replaceWith(input);
+  input.focus();
+  input.select();
 };
 
 // === Rename ===
