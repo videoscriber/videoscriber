@@ -387,6 +387,56 @@ input, textarea, button, select { font-family: inherit; font-size: inherit; }
 .status-error { color: var(--error); }
 .status-pending, .status-extracting, .status-transcribing { color: var(--accent); }
 
+.item-warn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: var(--warning, #d97706);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: help;
+}
+
+.postprocess-warning {
+  margin: 0.5rem 0 1rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid var(--warning, #d97706);
+  background: color-mix(in srgb, var(--warning, #d97706) 12%, transparent);
+  border-radius: 0.25rem;
+  font-size: 0.8rem;
+}
+
+.postprocess-warning-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.15rem 0;
+}
+
+.postprocess-retry {
+  background: transparent;
+  border: 1px solid var(--warning, #d97706);
+  color: var(--warning, #d97706);
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.2rem 0.55rem;
+  border-radius: 0.25rem;
+  cursor: pointer;
+}
+
+.postprocess-retry:hover:not(:disabled) {
+  background: var(--warning, #d97706);
+  color: #fff;
+}
+
+.postprocess-retry:disabled { opacity: 0.6; cursor: wait; }
+
 .item-progress { width: 50px; }
 .item-progress progress {
   width: 100%;

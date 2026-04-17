@@ -311,23 +311,26 @@ async def get_or_generate_recap(job_id: str, regenerate: bool = False):
     if record["status"] != "done":
         raise HTTPException(400, "Transcription not complete")
 
-    # Return cached recap unless regenerate is requested
     if record.get("recap") and not regenerate:
         return {"recap": record["recap"]}
 
-    # Generate new recap
     from transcriber import generate_recap as gen_recap
     from openai import AsyncOpenAI
     client = AsyncOpenAI()
 
     transcript = record["transcript_text"] or ""
-    recap = await gen_recap(transcript, client)
-
-    if not recap:
+    try:
+        recap = await gen_recap(transcript, client)
+    except Exception as e:
+        logger.warning("On-demand recap failed for %s: %s", job_id, e)
+        await db.update_transcription(job_id, recap_status="failed")
         raise HTTPException(500, "Failed to generate recap. Check that your OpenAI key has access to chat models.")
 
-    # Cache it
-    await db.update_transcription(job_id, recap=recap)
+    if not recap:
+        await db.update_transcription(job_id, recap_status="failed")
+        raise HTTPException(500, "Failed to generate recap. Check that your OpenAI key has access to chat models.")
+
+    await db.update_transcription(job_id, recap=recap, recap_status="ok")
     return {"recap": recap}
 
 

@@ -171,12 +171,11 @@ async def transcribe_file(client: AsyncOpenAI, file_path: Path) -> dict:
 # ============================================================
 
 async def identify_speaker_names(segments: list[dict], client: AsyncOpenAI) -> list[dict]:
-    """Use GPT to identify real speaker names from transcript context."""
+    """Use GPT to identify real speaker names from transcript context. Raises on failure."""
     speakers = sorted({seg["speaker"] for seg in segments if seg.get("speaker")})
     if len(speakers) < 2:
         return segments
 
-    # Build a condensed transcript sample for the LLM (first ~4000 chars)
     sample_lines = []
     char_count = 0
     for seg in segments:
@@ -189,44 +188,38 @@ async def identify_speaker_names(segments: list[dict], client: AsyncOpenAI) -> l
 
     sample = "\n".join(sample_lines)
 
-    try:
-        response = await client.chat.completions.create(
-            model=RECAP_MODEL,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You analyze transcripts to identify speaker names. "
-                        "Given a transcript with generic speaker labels (Speaker A, Speaker B, etc.), "
-                        "determine the real names of each speaker from context clues in the conversation "
-                        "(introductions, people addressing each other by name, etc.).\n\n"
-                        "Return ONLY a JSON object mapping the original label to the identified name. "
-                        "If you can identify a name, use it (first name only). "
-                        "If you cannot confidently identify a name, assign a friendly distinguishing label "
-                        "based on their role if apparent (e.g., 'Host', 'Interviewer', 'Presenter') "
-                        "or keep the original label but make it friendlier (e.g., 'Speaker A' stays 'Speaker A').\n\n"
-                        "Example response: {\"Speaker A\": \"Sarah\", \"Speaker B\": \"Mike\", \"Speaker C\": \"Speaker C\"}"
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": f"Speakers to identify: {', '.join(speakers)}\n\nTranscript:\n{sample}",
-                },
-            ],
-            response_format={"type": "json_object"},
-        )
+    response = await client.chat.completions.create(
+        model=RECAP_MODEL,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You analyze transcripts to identify speaker names. "
+                    "Given a transcript with generic speaker labels (Speaker A, Speaker B, etc.), "
+                    "determine the real names of each speaker from context clues in the conversation "
+                    "(introductions, people addressing each other by name, etc.).\n\n"
+                    "Return ONLY a JSON object mapping the original label to the identified name. "
+                    "If you can identify a name, use it (first name only). "
+                    "If you cannot confidently identify a name, assign a friendly distinguishing label "
+                    "based on their role if apparent (e.g., 'Host', 'Interviewer', 'Presenter') "
+                    "or keep the original label but make it friendlier (e.g., 'Speaker A' stays 'Speaker A').\n\n"
+                    "Example response: {\"Speaker A\": \"Sarah\", \"Speaker B\": \"Mike\", \"Speaker C\": \"Speaker C\"}"
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"Speakers to identify: {', '.join(speakers)}\n\nTranscript:\n{sample}",
+            },
+        ],
+        response_format={"type": "json_object"},
+    )
 
-        name_map = json.loads(response.choices[0].message.content)
-        logger.info("Speaker name mapping for job: %s", name_map)
+    name_map = json.loads(response.choices[0].message.content)
+    logger.info("Speaker name mapping for job: %s", name_map)
 
-        # Apply the mapping
-        for seg in segments:
-            if seg.get("speaker") and seg["speaker"] in name_map:
-                seg["speaker"] = name_map[seg["speaker"]]
-
-    except Exception as e:
-        logger.warning("Speaker identification failed (non-fatal): %s", e)
-        # Keep original labels — this is a best-effort enhancement
+    for seg in segments:
+        if seg.get("speaker") and seg["speaker"] in name_map:
+            seg["speaker"] = name_map[seg["speaker"]]
 
     return segments
 
@@ -235,55 +228,51 @@ async def identify_speaker_names(segments: list[dict], client: AsyncOpenAI) -> l
 # Auto recap generation
 # ============================================================
 
-async def generate_recap(plain_text: str, client: AsyncOpenAI) -> str | None:
-    """Generate a meeting recap email from transcript text."""
+async def generate_recap(plain_text: str, client: AsyncOpenAI) -> str:
+    """Generate a meeting recap email from transcript text. Raises on API failure."""
     transcript = plain_text
     if len(transcript) > 60000:
         transcript = transcript[:60000] + "\n\n[...transcript truncated for length]"
 
-    try:
-        response = await client.chat.completions.create(
-            model=RECAP_MODEL,
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are the ideal coworker — sharp, warm, and genuinely helpful. "
-                        "You write recap emails that people actually enjoy reading. "
-                        "Your tone is professional but human: a touch of wit when appropriate, "
-                        "always clear, never stuffy or robotic.\n\n"
-                        "Given a meeting transcript, write a recap email in PLAIN TEXT (no markdown, "
-                        "no asterisks, no bold formatting — this will be pasted into an email client).\n\n"
-                        "Format:\n\n"
-                        "Subject: [One clear line suitable as an email subject]\n\n"
-                        "Hey team,\n\n"
-                        "[2-3 sentence summary that captures the vibe and substance of the meeting]\n\n"
-                        "KEY POINTS\n"
-                        "- [bullet points of main topics discussed]\n\n"
-                        "DECISIONS\n"
-                        "- [bullet points — omit this section entirely if no clear decisions were made]\n\n"
-                        "NEXT STEPS\n"
-                        "- [Owner]: [action item] — [deadline if mentioned]\n"
-                        "- [bullet points with names attached when identifiable]\n\n"
-                        "[Brief, friendly sign-off — keep it natural, like a real person wrote it]\n\n"
-                        "Rules:\n"
-                        "- Use real names from the transcript when you can identify them\n"
-                        "- No asterisks, no markdown, no bold/italic formatting\n"
-                        "- Use CAPS for section headers (KEY POINTS, DECISIONS, NEXT STEPS)\n"
-                        "- Keep it concise — respect people's inboxes\n"
-                        "- A touch of personality is welcome but don't force humor"
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": f"Here is the transcript:\n\n{transcript}",
-                },
-            ],
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        logger.warning("Recap generation failed (non-fatal): %s", e)
-        return None
+    response = await client.chat.completions.create(
+        model=RECAP_MODEL,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "You are the ideal coworker — sharp, warm, and genuinely helpful. "
+                    "You write recap emails that people actually enjoy reading. "
+                    "Your tone is professional but human: a touch of wit when appropriate, "
+                    "always clear, never stuffy or robotic.\n\n"
+                    "Given a meeting transcript, write a recap email in PLAIN TEXT (no markdown, "
+                    "no asterisks, no bold formatting — this will be pasted into an email client).\n\n"
+                    "Format:\n\n"
+                    "Subject: [One clear line suitable as an email subject]\n\n"
+                    "Hey team,\n\n"
+                    "[2-3 sentence summary that captures the vibe and substance of the meeting]\n\n"
+                    "KEY POINTS\n"
+                    "- [bullet points of main topics discussed]\n\n"
+                    "DECISIONS\n"
+                    "- [bullet points — omit this section entirely if no clear decisions were made]\n\n"
+                    "NEXT STEPS\n"
+                    "- [Owner]: [action item] — [deadline if mentioned]\n"
+                    "- [bullet points with names attached when identifiable]\n\n"
+                    "[Brief, friendly sign-off — keep it natural, like a real person wrote it]\n\n"
+                    "Rules:\n"
+                    "- Use real names from the transcript when you can identify them\n"
+                    "- No asterisks, no markdown, no bold/italic formatting\n"
+                    "- Use CAPS for section headers (KEY POINTS, DECISIONS, NEXT STEPS)\n"
+                    "- Keep it concise — respect people's inboxes\n"
+                    "- A touch of personality is welcome but don't force humor"
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"Here is the transcript:\n\n{transcript}",
+            },
+        ],
+    )
+    return response.choices[0].message.content or ""
 
 
 # ============================================================
@@ -292,59 +281,66 @@ async def generate_recap(plain_text: str, client: AsyncOpenAI) -> str | None:
 
 async def post_process(job_id: str, all_segments: list[dict], plain_text: str,
                        video_path: Path | None = None):
-    """Speaker names, recap, and video enhancement — all in parallel. Non-fatal."""
+    """Speaker names, recap, and video enhancement — parallel, non-fatal. Records status per subtask."""
     client = AsyncOpenAI()
     has_speakers = any(seg.get("speaker") for seg in all_segments)
+    should_enhance = bool(video_path and video_path.exists() and KEEP_VIDEO)
 
-    # Run everything in parallel
-    tasks = []
-
-    # Task 0: Speaker identification
-    if has_speakers:
-        tasks.append(identify_speaker_names(all_segments, client))
-    else:
-        tasks.append(_passthrough(all_segments))
-
-    # Task 1: Recap generation
-    tasks.append(generate_recap(plain_text, client))
-
-    # Task 2: Video enhancement
-    if video_path and video_path.exists() and KEEP_VIDEO:
+    tasks = [
+        identify_speaker_names(all_segments, client) if has_speakers else _passthrough(all_segments),
+        generate_recap(plain_text, client),
+    ]
+    if should_enhance:
         enhanced_path = video_path.parent / f"{video_path.stem}_enhanced.mp4"
         tasks.append(enhance_video(video_path, enhanced_path))
     else:
         tasks.append(_passthrough(None))
 
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    speaker_res, recap_res, enhance_res = await asyncio.gather(*tasks, return_exceptions=True)
 
-    updated_segments = results[0] if not isinstance(results[0], Exception) else all_segments
-    recap = results[1] if not isinstance(results[1], Exception) else None
-    enhanced = results[2] if not isinstance(results[2], Exception) else None
+    updates: dict = {}
 
-    updates = {}
+    # Speaker identification
+    if not has_speakers:
+        updates["speaker_id_status"] = "skipped"
+    elif isinstance(speaker_res, Exception):
+        logger.warning("Speaker identification failed (non-fatal): %s", speaker_res)
+        updates["speaker_id_status"] = "failed"
+    else:
+        updates["speaker_id_status"] = "ok"
+        updated_plain = " ".join(seg["text"].strip() for seg in speaker_res)
+        updates["transcript_text"] = updated_plain
+        updates["transcript_srt"] = generate_srt(speaker_res)
+        updates["transcript_vtt"] = generate_vtt(speaker_res)
+        updates["transcript_segments_json"] = json.dumps(speaker_res)
 
-    # Speaker names → regenerate outputs
-    if has_speakers and not isinstance(results[0], Exception):
-        plain_text = " ".join(seg["text"].strip() for seg in updated_segments)
-        updates["transcript_text"] = plain_text
-        updates["transcript_srt"] = generate_srt(updated_segments)
-        updates["transcript_vtt"] = generate_vtt(updated_segments)
-        updates["transcript_segments_json"] = json.dumps(updated_segments)
+    # Recap (always attempted when post_process runs)
+    if isinstance(recap_res, Exception):
+        logger.warning("Recap generation failed (non-fatal): %s", recap_res)
+        updates["recap_status"] = "failed"
+    elif recap_res:
+        updates["recap"] = recap_res
+        updates["recap_status"] = "ok"
+    else:
+        updates["recap_status"] = "failed"
 
-    if recap:
-        updates["recap"] = recap
-
-    # Video enhancement result
-    if video_path and video_path.exists() and KEEP_VIDEO:
+    # Video enhancement
+    if not should_enhance:
+        updates["enhancement_status"] = "skipped"
+    elif isinstance(enhance_res, Exception):
+        logger.warning("Video enhancement crashed (non-fatal): %s", enhance_res)
+        updates["enhancement_status"] = "failed"
+        updates["video_path"] = str(video_path)
+    elif enhance_res:
         enhanced_path = video_path.parent / f"{video_path.stem}_enhanced.mp4"
-        if enhanced:
-            video_path.unlink(missing_ok=True)
-            updates["video_path"] = str(enhanced_path)
-        else:
-            updates["video_path"] = str(video_path)
+        video_path.unlink(missing_ok=True)
+        updates["video_path"] = str(enhanced_path)
+        updates["enhancement_status"] = "ok"
+    else:
+        updates["enhancement_status"] = "failed"
+        updates["video_path"] = str(video_path)
 
-    if updates:
-        await db.update_transcription(job_id, **updates)
+    await db.update_transcription(job_id, **updates)
 
 
 async def _passthrough(val):

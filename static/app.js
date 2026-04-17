@@ -190,6 +190,8 @@ function updateListItemContent(el, item) {
   }
   actionsHtml += `<button class="item-delete" title="Delete" onclick="window._deleteJob('${item.id}', event)">&times;</button>`;
 
+  const warningBadge = renderPostprocessWarning(item);
+
   el.innerHTML = `
     <div class="item-info">
       <span class="item-filename">${escapeHtml(item.filename)}</span>
@@ -199,10 +201,67 @@ function updateListItemContent(el, item) {
     </div>
     <div class="item-right">
       ${progressHtml}
+      ${warningBadge}
       <span class="item-status status-${item.status}">${statusLabel}</span>
       <div class="item-actions">${actionsHtml}</div>
     </div>
   `;
+}
+
+function renderPostprocessBanner(data) {
+  const banner = document.getElementById('postprocess-warning');
+  if (!banner) return;
+  if (data.status !== 'done') {
+    banner.hidden = true;
+    banner.innerHTML = '';
+    return;
+  }
+  const items = [];
+  if (data.recap_status === 'failed') {
+    items.push({ label: 'Recap generation failed', retry: 'recap' });
+  }
+  if (data.speaker_id_status === 'failed') {
+    items.push({ label: 'Speaker name identification failed — generic labels kept' });
+  }
+  if (data.enhancement_status === 'failed') {
+    items.push({ label: 'Video enhancement failed — original video kept' });
+  }
+  if (!items.length) {
+    banner.hidden = true;
+    banner.innerHTML = '';
+    return;
+  }
+  banner.hidden = false;
+  banner.innerHTML = items.map(it => {
+    const retry = it.retry === 'recap'
+      ? '<button class="postprocess-retry" data-retry="recap">Try again</button>'
+      : '';
+    return `<div class="postprocess-warning-item"><span>${escapeHtml(it.label)}</span>${retry}</div>`;
+  }).join('');
+  const retryBtn = banner.querySelector('[data-retry="recap"]');
+  if (retryBtn) {
+    retryBtn.addEventListener('click', () => {
+      retryBtn.disabled = true;
+      retryBtn.textContent = 'Generating...';
+      // Trigger the existing recap flow in regenerate mode
+      if (typeof window._openRecap === 'function') {
+        window._openRecap(true);
+      } else {
+        document.getElementById('btn-recap')?.click();
+      }
+    });
+  }
+}
+
+function renderPostprocessWarning(item) {
+  if (item.status !== 'done') return '';
+  const failures = [];
+  if (item.recap_status === 'failed') failures.push('Recap');
+  if (item.speaker_id_status === 'failed') failures.push('Speaker ID');
+  if (item.enhancement_status === 'failed') failures.push('Video enhancement');
+  if (!failures.length) return '';
+  const tooltip = `${failures.join(', ')} failed — transcript is complete, but these extras did not finish. Click the item to see details.`;
+  return `<span class="item-warn" role="img" aria-label="${escapeHtml(tooltip)}" title="${escapeHtml(tooltip)}">!</span>`;
 }
 
 function updateListItem(data) {
@@ -227,6 +286,8 @@ function showTranscript(data) {
   transcriptSection.hidden = false;
   emptyState.hidden = true;
   transcriptTitle.textContent = data.filename;
+
+  renderPostprocessBanner(data);
 
   // Video preview
   if (data.video_path && data.status === 'done') {
@@ -601,6 +662,8 @@ function initRecap() {
   recapRegenerate.addEventListener('click', () => generateRecap(true));
 
   recapSend.addEventListener('click', sendRecapEmail);
+
+  window._openRecap = generateRecap;
 }
 
 async function generateRecap(regenerate = false) {
