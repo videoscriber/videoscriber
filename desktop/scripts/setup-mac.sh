@@ -45,13 +45,6 @@ if [ "${PY_MAJOR}" -lt 3 ] || { [ "${PY_MAJOR}" -eq 3 ] && [ "${PY_MINOR}" -lt 1
 fi
 echo "Python ${PY_VERSION} found."
 
-if ! command -v ffmpeg >/dev/null 2>&1; then
-    echo "ERROR: ffmpeg not found. Install:" >&2
-    echo "  brew install ffmpeg" >&2
-    exit 1
-fi
-echo "ffmpeg found: $(ffmpeg -version | head -1)"
-echo ""
 
 # --- Create/refresh venv ---
 mkdir -p "${SUPPORT_DIR}"
