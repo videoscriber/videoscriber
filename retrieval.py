@@ -20,7 +20,8 @@ import database as db
 
 logger = logging.getLogger(__name__)
 
-EMBEDDING_MODEL = "text-embedding-3-small"
+import os
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
 EMBEDDING_DIM = 1536
 # Target chunk size (characters) — roughly 250-400 tokens for English transcripts.
 CHUNK_TARGET_CHARS = 1400
