@@ -202,6 +202,25 @@ async def complete_email_profile(user_id: str, full_name: str, phone: str | None
         await db.commit()
 
 
+async def set_profile_extras(user_id: str, business: str | None, title: str | None) -> None:
+    """Upsert the optional business + title fields collected at signup.
+    A value of None leaves the column alone; empty string clears it."""
+    updates: list[str] = []
+    values: list[str | None] = []
+    if business is not None:
+        updates.append("business = ?")
+        values.append(business.strip() or None)
+    if title is not None:
+        updates.append("title = ?")
+        values.append(title.strip() or None)
+    if not updates:
+        return
+    values.append(user_id)
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = ?", values)
+        await db.commit()
+
+
 async def update_email_settings(user_id: str, signature: str, branding_hidden: bool) -> None:
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(

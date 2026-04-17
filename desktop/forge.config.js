@@ -2,6 +2,7 @@ module.exports = {
   packagerConfig: {
     name: 'Videoscriber',
     executableName: 'videoscriber',
+    icon: './icon', // Electron appends .icns/.ico/.png per platform
     asar: false, // Don't bundle in asar — we need access to python backend files
     extraResource: [
       '../app.py',
@@ -29,6 +30,7 @@ module.exports = {
       name: '@electron-forge/maker-dmg',
       config: {
         format: 'ULFO',
+        icon: './icon.icns', // icon for the .app inside the mounted .dmg window
       },
     },
     {

@@ -19,7 +19,7 @@
     "url": "https://videoscriber.ai/",
     "logo": {
       "@type": "ImageObject",
-      "url": "https://videoscriber.ai/static/brand/icon.svg"
+      "url": "https://videoscriber.ai/static/brand/mark.svg"
     }
   },
   "offers": {
@@ -287,11 +287,9 @@
             <div class="audience-label">Open source</div>
             <h3>For the dev community</h3>
             <p>The desktop app is fully open. Fork it, self-host it, extend it with your own transcription providers. Bring your own API keys, keep data on your machine, ship features we haven't built.</p>
-            <div class="code-block">
-<span class="prompt">$</span> git clone git@github.com:videoscriber/videoscriber
+            <div class="code-block"><span class="prompt">$</span> git clone git@github.com:videoscriber/videoscriber
 <span class="prompt">$</span> cd videoscriber &amp;&amp; docker compose up --build
-<span class="cmt"># BYO keys. Local DB. No telemetry.</span>
-            </div>
+<span class="cmt"># BYO keys. Local DB. No telemetry.</span></div>
             <ul class="audience-list">
                 <li>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
@@ -316,18 +314,19 @@
             <div class="audience-label">Managed cloud</div>
             <h3>For the enterprise</h3>
             <p>Focused productivity that drops into existing workflows, no vendor switch, no platform migration. Built on the same codebase, hosted by us, with the compliance guarantees your team actually needs.</p>
+            <div class="panel-highlights">
+                <div><strong>90&#8209;day</strong><span>encrypted backup</span></div>
+                <div><strong>0</strong><span>bytes to training</span></div>
+                <div><strong>HTTPS</strong><span>end&#8209;to&#8209;end</span></div>
+            </div>
             <ul class="audience-list">
-                <li>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                    <span>90-day encrypted cloud backup, HTTPS end-to-end</span>
-                </li>
                 <li>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                     <span>Zero training on customer content, contractually</span>
                 </li>
                 <li>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                    <span>SMS-verified, session-based auth with rate-limited sign-in</span>
+                    <span>Session-based auth with rate-limited sign-in</span>
                 </li>
                 <li>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
@@ -346,7 +345,7 @@
 <section class="section faq reveal">
     <div class="section-kicker">Questions &amp; answers</div>
     <h2 class="section-title">Things people ask <span class="grad">before signing up.</span></h2>
-    <p class="section-lead">The short version. For anything deeper, email <a href="mailto:hello@videoscriber.ai" style="color: var(--purple-light);">hello@videoscriber.ai</a>.</p>
+    <p class="section-lead">The short version. For anything deeper, email <a href="mailto:support@videoscriber.ai" style="color: var(--purple-light);">support@videoscriber.ai</a>.</p>
 
     <div class="faq-list">
         <details class="faq-item">
@@ -395,21 +394,8 @@
 {% endblock %}
 {% block scripts %}
 <script>
-// Scroll-triggered reveal
-(() => {
-    const targets = document.querySelectorAll('.reveal');
-    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (reduce || !('IntersectionObserver' in window)) {
-        targets.forEach(el => el.classList.add('in'));
-        return;
-    }
-    const io = new IntersectionObserver((entries) => {
-        for (const e of entries) {
-            if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
-        }
-    }, { rootMargin: '0px 0px -10% 0px', threshold: 0.12 });
-    targets.forEach(el => io.observe(el));
-})();
+// Reveal-on-scroll lives in /static/public-reveal.js (loaded for every
+// public page). Only the card cursor-follow glow stays landing-specific.
 
 // Feature card cursor-follow glow (pointer position → CSS vars)
 (() => {

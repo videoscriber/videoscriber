@@ -370,6 +370,61 @@ async def brand_page(request: Request):
     return templates.TemplateResponse(request, "brand.html")
 
 
+_BRAND_DIR = Path("static/brand")
+_BRAND_KITS: dict[str, list[str]] = {
+    "logo": ["logo.svg", "logo-600.png", "logo-1200.png", "logo-2400.png"],
+    "logo-mono-black": [
+        "logo-mono-black.svg", "logo-mono-black-600.png",
+        "logo-mono-black-1200.png", "logo-mono-black-2400.png",
+    ],
+    "logo-mono-white": [
+        "logo-mono-white.svg", "logo-mono-white-600.png",
+        "logo-mono-white-1200.png", "logo-mono-white-2400.png",
+    ],
+    "mark": ["mark.svg", "mark-256.png", "mark-512.png", "mark-1024.png", "mark-2048.png"],
+    "mark-mono-black": [
+        "mark-mono-black.svg", "mark-mono-black-256.png",
+        "mark-mono-black-512.png", "mark-mono-black-1024.png", "mark-mono-black-2048.png",
+    ],
+    "mark-mono-white": [
+        "mark-mono-white.svg", "mark-mono-white-256.png",
+        "mark-mono-white-512.png", "mark-mono-white-1024.png", "mark-mono-white-2048.png",
+    ],
+    "wordmark": ["wordmark.svg", "wordmark-600.png", "wordmark-1200.png", "wordmark-2400.png"],
+    "wordmark-mono-black": [
+        "wordmark-mono-black.svg", "wordmark-mono-black-600.png",
+        "wordmark-mono-black-1200.png", "wordmark-mono-black-2400.png",
+    ],
+    "wordmark-mono-white": [
+        "wordmark-mono-white.svg", "wordmark-mono-white-600.png",
+        "wordmark-mono-white-1200.png", "wordmark-mono-white-2400.png",
+    ],
+    "avatar": ["avatar.svg", "avatar-256.png", "avatar-512.png", "avatar-1024.png", "avatar-2048.png"],
+}
+
+
+@app.get("/brand/kit/{slug}.zip")
+async def brand_kit_zip(slug: str):
+    import io
+    import zipfile
+    files = _BRAND_KITS.get(slug)
+    if not files:
+        raise HTTPException(404, "Unknown brand kit")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name in files:
+            path = _BRAND_DIR / name
+            if path.exists():
+                zf.write(path, name)
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="videoscriber-{slug}.zip"',
+        },
+    )
+
+
 _release_cache: dict = {"data": None, "fetched_at": 0.0}
 _RELEASE_CACHE_TTL = 300  # 5 minutes
 _RELEASE_URL = "https://api.github.com/repos/videoscriber/videoscriber/releases/latest"

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#B794F6" />
+      <stop offset="50%" style="stop-color:#8B5CF6" />
+      <stop offset="100%" style="stop-color:#6D28D9" />
+    </linearGradient>
+    <linearGradient id="lensGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#EDE9FE" />
+      <stop offset="100%" style="stop-color:#C4B5FD" />
+    </linearGradient>
+  </defs>
+  <!-- Rounded-square background (iOS app-icon radius ≈ 22.4% of side) -->
+  <rect width="1024" height="1024" rx="229" ry="229" fill="url(#bgGrad)" />
+
+  <!-- Mark, scaled up and centered. Keep the same proportional geometry as mark.svg. -->
+  <g transform="translate(512, 512) scale(8.5)">
+    <!-- Camera body: simplified to a single light-purple rect so it reads on the darker purple background. -->
+    <rect x="-26" y="-27" width="54" height="54" rx="12" ry="12" fill="#FFFFFF" opacity="0.98" />
+    <path d="M 25,-16 L 38,-23 Q 42,-25 42,-21 L 42,21 Q 42,25 38,23 L 25,16 Z" fill="url(#lensGrad)" />
+    <!-- Caption bars in the brand purple, legible against the white camera body -->
+    <g>
+      <rect x="-17" y="-10" width="29" height="4" rx="2" fill="#6D28D9" />
+      <rect x="-17" y="-2"  width="36" height="4" rx="2" fill="#7C3AED" />
+      <rect x="-17" y="6"   width="22" height="4" rx="2" fill="#8B5CF6" />
+    </g>
+  </g>
+</svg>

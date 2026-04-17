@@ -105,40 +105,124 @@
 
 /* Footer */
 .public-footer {
+    position: relative;
+    margin-top: 120px;
+    padding: 64px 32px 0;
     border-top: 1px solid var(--border);
-    padding: 32px;
-    margin-top: 80px;
+    background:
+        radial-gradient(ellipse 800px 320px at 50% 0%, rgba(139, 92, 246, 0.08), transparent 70%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent 40%);
 }
 .public-footer-inner {
     max-width: 1200px;
     margin: 0 auto;
+    display: grid;
+    grid-template-columns: minmax(220px, 2fr) repeat(3, minmax(140px, 1fr));
+    gap: 48px 40px;
+    padding-bottom: 56px;
+}
+@media (max-width: 800px) {
+    .public-footer-inner {
+        grid-template-columns: 1fr 1fr;
+        gap: 36px 24px;
+    }
+}
+@media (max-width: 520px) {
+    .public-footer-inner { grid-template-columns: 1fr; }
+}
+.footer-brand-col {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+.footer-brand-col .brand-logo { height: 34px; width: auto; }
+.footer-tagline {
+    font-size: 14px;
+    line-height: 1.55;
+    color: var(--text-secondary);
+    max-width: 280px;
+    margin: 0;
+}
+.footer-socials {
+    display: flex;
+    gap: 10px;
+    margin-top: 4px;
+}
+.footer-socials a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.02);
+    color: var(--text-secondary);
+    transition: color 150ms ease, background 150ms ease, border-color 150ms ease, transform 150ms ease;
+}
+.footer-socials a:hover {
+    color: var(--text);
+    background: rgba(167, 139, 250, 0.12);
+    border-color: rgba(167, 139, 250, 0.4);
+    transform: translateY(-1px);
+}
+.footer-col h4 {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text);
+    margin: 0 0 16px;
+}
+.footer-col ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.footer-col ul a {
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 14px;
+    transition: color var(--fast) var(--ease);
+}
+.footer-col ul a:hover { color: var(--text); }
+
+.public-footer-bottom {
+    border-top: 1px solid var(--border);
+}
+.public-footer-bottom-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 22px 0;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 24px;
-    flex-wrap: wrap;
-}
-.public-footer-brand {
-    display: flex;
-    align-items: center;
     gap: 16px;
-    color: var(--text-secondary);
-}
-.public-footer-brand .muted {
+    flex-wrap: wrap;
     font-size: 13px;
     color: var(--text-muted);
 }
-.public-footer-links {
-    display: flex;
-    gap: 24px;
+.footer-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 500;
 }
-.public-footer-links a {
-    color: var(--text-secondary);
-    text-decoration: none;
-    font-size: 13px;
-    transition: color var(--fast) var(--ease);
+.footer-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.15);
+    animation: footer-pulse 2.4s ease-in-out infinite;
 }
-.public-footer-links a:hover { color: var(--text); }
+@keyframes footer-pulse {
+    0%, 100% { box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.15); }
+    50%      { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0.05); }
+}
 
 /* Buttons */
 .btn {
@@ -188,20 +272,29 @@
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
     padding: 40px;
+    text-align: center;
     box-shadow: var(--shadow-lg);
 }
 .auth-card h1 {
     font-size: 26px;
     font-weight: 700;
-    margin: 0 0 8px;
+    margin: 0 0 10px;
     letter-spacing: -0.01em;
 }
 .auth-card .subtitle {
     color: var(--text-secondary);
     font-size: 14px;
-    margin: 0 0 32px;
+    margin: 0 0 28px;
     line-height: 1.5;
 }
+/* Form fields keep their input text left-aligned even though the card is
+   centered — typed emails/OTPs look wrong when centered. */
+.auth-card .form-input { text-align: left; }
+.auth-card .form-input.otp-input { text-align: center; letter-spacing: 0.5em; }
+.auth-card .form-field { margin-bottom: 16px; text-align: left; }
+.auth-card .form-checkbox { text-align: left; }
+.auth-card .auth-meta { margin-top: 24px; }
+.auth-card .form-help { margin-top: 6px; margin-bottom: 0; text-align: left; }
 .auth-step { display: none; }
 .auth-step.active { display: block; }
 

@@ -195,6 +195,8 @@ async def complete_profile(
     full_name: str = Form(...),
     email: str = Form(...),
     agree: str = Form(default=""),
+    business: str = Form(default=""),
+    title: str = Form(default=""),
 ):
     user = await auth.current_user(request)
     if not user:
@@ -208,6 +210,7 @@ async def complete_profile(
     if agree != "on":
         raise HTTPException(400, "You must agree to the Terms and Privacy Policy to continue")
     await auth.update_user_profile(user["user_id"], full_name, email)
+    await auth.set_profile_extras(user["user_id"], business or None, title or None)
     return {"ok": True, "next": "/app"}
 
 
@@ -261,6 +264,8 @@ async def complete_profile_email(
     full_name: str = Form(...),
     phone: str = Form(default=""),
     agree: str = Form(default=""),
+    business: str = Form(default=""),
+    title: str = Form(default=""),
 ):
     user = await auth.current_user(request)
     if not user:
@@ -274,6 +279,7 @@ async def complete_profile_email(
     if agree != "on":
         raise HTTPException(400, "You must agree to the Terms and Privacy Policy to continue")
     await auth.complete_email_profile(user["user_id"], full_name, normalized_phone)
+    await auth.set_profile_extras(user["user_id"], business or None, title or None)
     return {"ok": True, "next": "/app"}
 
 
