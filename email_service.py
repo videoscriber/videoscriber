@@ -65,6 +65,30 @@ async def send_email_signin_code(to_email: str, code: str) -> None:
         raise HTTPException(502, "Could not send email. Please try again.")
 
 
+async def send_recap_email(
+    to_email: str,
+    subject: str,
+    body_text: str,
+    body_html: str,
+    from_override: str | None = None,
+) -> None:
+    """Send a user-composed recap email via Resend."""
+    if not RESEND_API_KEY:
+        raise HTTPException(503, "Email sending is not configured. Set RESEND_API_KEY in .env")
+    _ensure_configured()
+    try:
+        resend.Emails.send({
+            "from": from_override or FROM_ADDRESS,
+            "to": [to_email],
+            "subject": subject,
+            "html": body_html,
+            "text": body_text,
+        })
+    except Exception as e:
+        logger.warning("Resend recap send failed for %s: %s", to_email, e)
+        raise HTTPException(502, "Could not send email. Please try again.")
+
+
 async def send_email_otp(to_email: str, code: str, masked_phone: str) -> None:
     """Send an OTP code via email as a fallback to SMS."""
     if AUTH_DEV_BYPASS or not RESEND_API_KEY:
