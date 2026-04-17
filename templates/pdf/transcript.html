@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>{{ filename }}</title>
+<style>
+  @page {
+    size: Letter;
+    margin: 0.85in 0.9in 1.0in 0.9in;
+    @bottom-center {
+      content: counter(page) "  /  " counter(pages);
+      font-family: "Inter", "Helvetica", sans-serif;
+      font-size: 9pt;
+      color: #999;
+      padding-top: 0.2in;
+    }
+    @bottom-right {
+      content: "videoscriber.ai";
+      font-family: "Inter", "Helvetica", sans-serif;
+      font-size: 9pt;
+      color: #8b5cf6;
+      padding-top: 0.2in;
+    }
+  }
+
+  :root { color: #17171a; font-family: "Inter", "Helvetica Neue", Arial, sans-serif; }
+  * { box-sizing: border-box; }
+  body { font-size: 10.5pt; line-height: 1.55; color: #17171a; }
+
+  /* --- Cover block -------------------------------------------------------- */
+  .cover { margin-bottom: 0.3in; padding-bottom: 0.2in; border-bottom: 1pt solid #e6e6ee; }
+  .brand {
+    display: flex; align-items: center; gap: 0.12in;
+    font-size: 10pt; font-weight: 600; color: #8b5cf6;
+    letter-spacing: 0.04em; text-transform: uppercase;
+    margin-bottom: 0.22in;
+  }
+  .brand-dot { width: 0.08in; height: 0.08in; border-radius: 50%;
+               background: linear-gradient(135deg, #a78bfa, #6366f1); }
+
+  h1.title {
+    font-size: 22pt; font-weight: 700; letter-spacing: -0.015em;
+    margin: 0 0 0.12in; line-height: 1.15; color: #0f0f15;
+  }
+  .meta { color: #6b6b80; font-size: 9.5pt; display: flex; gap: 0.22in; flex-wrap: wrap; }
+  .meta .sep { color: #bbb; }
+
+  /* --- Summary card ------------------------------------------------------- */
+  .summary {
+    background: #f6f4ff;
+    border: 1pt solid #dfd7f6;
+    border-radius: 8pt;
+    padding: 0.24in 0.3in;
+    margin-top: 0.28in;
+  }
+  .summary h2 {
+    font-size: 8.5pt; font-weight: 700; color: #6d28d9;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    margin: 0 0 0.1in;
+  }
+  .summary .recap { white-space: pre-wrap; font-size: 10pt; line-height: 1.6; color: #2a2a35; }
+
+  /* --- Speakers chips ----------------------------------------------------- */
+  .speakers { margin-top: 0.28in; }
+  .speakers h3 {
+    font-size: 8.5pt; font-weight: 700; color: #6b6b80;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    margin: 0 0 0.1in;
+  }
+  .speakers .chip {
+    display: inline-block; margin: 0 0.08in 0.08in 0;
+    padding: 0.05in 0.14in;
+    border-radius: 100pt; border: 1pt solid #e6e6ee; background: #fafafd;
+    font-size: 9pt; font-weight: 500; color: #2a2a35;
+  }
+  .speakers .chip .dot {
+    display: inline-block; width: 0.07in; height: 0.07in; border-radius: 50%;
+    margin-right: 0.06in; vertical-align: middle;
+  }
+
+  /* --- Transcript body ---------------------------------------------------- */
+  .transcript { margin-top: 0.35in; }
+  .transcript h2 {
+    font-size: 8.5pt; font-weight: 700; color: #6b6b80;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    margin: 0 0 0.2in;
+    padding-bottom: 0.08in; border-bottom: 1pt solid #e6e6ee;
+  }
+  .segment {
+    display: grid;
+    grid-template-columns: 0.55in 1.25in 1fr;
+    gap: 0.15in;
+    padding: 0.06in 0;
+    page-break-inside: avoid;
+  }
+  .segment + .segment { border-top: 0.5pt solid #f1eef9; }
+  .segment .ts {
+    font-family: "SF Mono", "Menlo", monospace;
+    font-size: 8pt; color: #8a8aa0;
+    padding-top: 0.02in;
+  }
+  .segment .speaker {
+    font-size: 8.5pt; font-weight: 600; color: #2a2a35;
+    padding-top: 0.02in;
+  }
+  .segment .text { font-size: 10pt; line-height: 1.55; color: #17171a; }
+
+  /* Avoid lonely headings near page bottom */
+  h1, h2, h3 { page-break-after: avoid; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="brand">
+    <span class="brand-dot"></span>
+    Videoscriber
+  </div>
+  <h1 class="title">{{ filename }}</h1>
+  <div class="meta">
+    <span>{{ created_label }}</span>
+    {% if duration_label %}<span class="sep">·</span><span>{{ duration_label }}</span>{% endif %}
+    {% if speaker_count %}<span class="sep">·</span><span>{{ speaker_count }} speaker{% if speaker_count != 1 %}s{% endif %}</span>{% endif %}
+  </div>
+
+  {% if recap %}
+  <div class="summary">
+    <h2>Meeting summary</h2>
+    <div class="recap">{{ recap }}</div>
+  </div>
+  {% endif %}
+
+  {% if speaker_chips %}
+  <div class="speakers">
+    <h3>Speakers</h3>
+    {% for s in speaker_chips %}
+      <span class="chip">
+        <span class="dot" style="background: {{ s.color }}"></span>
+        {{ s.name }}
+      </span>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<section class="transcript">
+  <h2>Full transcript</h2>
+  {% for seg in segments %}
+    <div class="segment">
+      <div class="ts">{{ seg.ts }}</div>
+      <div class="speaker" style="color: {{ seg.speaker_color or '#2a2a35' }}">
+        {% if seg.speaker %}{{ seg.speaker }}{% endif %}
+      </div>
+      <div class="text">{{ seg.text }}</div>
+    </div>
+  {% endfor %}
+</section>
+
+</body>
+</html>

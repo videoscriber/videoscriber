@@ -387,16 +387,85 @@ async def get_transcription(job_id: str, user: dict = Depends(auth.require_user)
 
 @app.get("/api/transcriptions/{job_id}/download/{fmt}")
 async def download_transcription(job_id: str, fmt: str, user: dict = Depends(auth.require_user)):
-    if fmt not in ("txt", "srt", "vtt"):
-        raise HTTPException(400, "Format must be txt, srt, or vtt")
+    if fmt not in ("txt", "srt", "vtt", "pdf"):
+        raise HTTPException(400, "Format must be txt, srt, vtt, or pdf")
 
     record = _require_owner(await db.get_transcription(job_id), user)
     if record["status"] != "done":
         raise HTTPException(400, "Transcription not complete")
 
+    stem = _safe_filename(Path(record["filename"]).stem) or "transcript"
+
+    # --- PDF: Plus-only ---
+    if fmt == "pdf":
+        if (user.get("plan") or "free") != "plus":
+            raise HTTPException(402, "PDF export is a Plus feature. Upgrade to unlock.")
+        from weasyprint import HTML as _HTML, CSS as _CSS  # noqa: F401
+        import json as _json
+        from datetime import datetime as _dt
+
+        # Build the segment rows with timestamps + speaker colors
+        palette = ["#8b5cf6", "#6366f1", "#14b8a6", "#f59e0b", "#ef4444",
+                   "#ec4899", "#10b981", "#f97316"]
+        segments_raw = _json.loads(record.get("transcript_segments_json") or "[]")
+        speaker_to_color: dict[str, str] = {}
+        rows = []
+        for seg in segments_raw:
+            spk = seg.get("speaker") or ""
+            if spk and spk not in speaker_to_color:
+                speaker_to_color[spk] = palette[len(speaker_to_color) % len(palette)]
+            total = int(seg.get("start") or 0)
+            hh = total // 3600
+            mm = (total % 3600) // 60
+            ss = total % 60
+            ts = f"{hh:02d}:{mm:02d}:{ss:02d}" if hh else f"{mm:02d}:{ss:02d}"
+            rows.append({
+                "ts": ts,
+                "speaker": spk,
+                "speaker_color": speaker_to_color.get(spk),
+                "text": (seg.get("text") or "").strip(),
+            })
+
+        speaker_chips = [{"name": name, "color": color}
+                          for name, color in speaker_to_color.items()]
+
+        duration_label = None
+        if record.get("duration_seconds"):
+            ds = int(record["duration_seconds"])
+            if ds >= 3600:
+                duration_label = f"{ds // 3600}h {(ds % 3600) // 60}m"
+            else:
+                duration_label = f"{ds // 60}m {ds % 60}s"
+
+        created_label = ""
+        try:
+            dt = _dt.fromisoformat(record["created_at"].replace("Z", "+00:00"))
+            created_label = dt.strftime("%B %-d, %Y")
+        except Exception:
+            created_label = (record.get("created_at") or "")[:10]
+
+        html_body = templates.get_template("pdf/transcript.html").render({
+            "filename": record.get("filename") or "Transcript",
+            "created_label": created_label,
+            "duration_label": duration_label,
+            "speaker_count": len(speaker_to_color),
+            "recap": (record.get("recap") or "").strip() or None,
+            "speaker_chips": speaker_chips,
+            "segments": rows,
+        })
+        pdf_bytes = _HTML(string=html_body, base_url=str(Path.cwd())).write_pdf()
+
+        filename = f"{stem}.pdf"
+        disposition = f"attachment; filename=\"{filename}\"; filename*=UTF-8''{quote(filename)}"
+        return Response(
+            content=pdf_bytes,
+            headers={"Content-Disposition": disposition},
+            media_type="application/pdf",
+        )
+
+    # --- Plain text formats ---
     field_map = {"txt": "transcript_text", "srt": "transcript_srt", "vtt": "transcript_vtt"}
     content = record[field_map[fmt]] or ""
-    stem = _safe_filename(Path(record["filename"]).stem) or "transcript"
     filename = f"{stem}.{fmt}"
     # RFC 5987 encoding handles non-ASCII and guards against header injection
     disposition = f"attachment; filename=\"{filename}\"; filename*=UTF-8''{quote(filename)}"

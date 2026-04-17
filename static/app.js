@@ -80,11 +80,53 @@ btnCopy.addEventListener('click', async () => {
   setTimeout(() => { span.textContent = orig; }, 1500);
 });
 
-// Download
-btnDownload.addEventListener('click', () => {
+// Download — PDF on Plus, nudge to upgrade on free (with plain-text fallback)
+async function downloadPdf() {
   if (!activeJobId) return;
-  const fmt = activeFormat === 'segments' ? 'txt' : activeFormat === 'text' ? 'txt' : activeFormat;
-  window.location.href = `/api/transcriptions/${activeJobId}/download/${fmt}`;
+  window.location.href = `/api/transcriptions/${activeJobId}/download/pdf`;
+}
+
+function showPdfUpgradeNudge() {
+  const existing = document.getElementById('pdf-upgrade-modal');
+  if (existing) { existing.hidden = false; return; }
+  const modal = document.createElement('div');
+  modal.id = 'pdf-upgrade-modal';
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal-dialog plus-nudge-dialog">
+      <div class="plus-nudge-icon">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      </div>
+      <h3>PDF export is a Plus feature</h3>
+      <p>Download a beautifully formatted PDF with the meeting summary on the cover, speaker labels, and the full transcript — ready to share or archive.</p>
+      <div class="plus-nudge-actions">
+        <button type="button" class="btn-ghost" data-act="txt">Download plain text</button>
+        <a href="/upgrade" class="btn-primary">Upgrade to Plus</a>
+      </div>
+    </div>`;
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) modal.hidden = true;
+    if (e.target.dataset.act === 'txt') {
+      modal.hidden = true;
+      window.location.href = `/api/transcriptions/${activeJobId}/download/txt`;
+    }
+  });
+  document.body.appendChild(modal);
+}
+
+btnDownload.addEventListener('click', async () => {
+  if (!activeJobId) return;
+  try {
+    const res = await fetch('/api/config');
+    const data = await res.json();
+    if ((data.plan?.tier || 'free') === 'plus') {
+      downloadPdf();
+    } else {
+      showPdfUpgradeNudge();
+    }
+  } catch {
+    showPdfUpgradeNudge();
+  }
 });
 
 // Retry

@@ -232,7 +232,8 @@ def generate_vtt(segments: list[dict]) -> str:
             if chunk_end <= t:
                 chunk_end = t + 0.01
             prefix = speaker_prefix if i == 0 else ""
-            lines.append(f"{format_timestamp_vtt(t)} --> {format_timestamp_vtt(chunk_end)}")
+            # Pin cues to the very bottom of the video frame
+            lines.append(f"{format_timestamp_vtt(t)} --> {format_timestamp_vtt(chunk_end)} line:95% position:50% align:middle")
             lines.append(f"{prefix}{chunk}")
             lines.append("")
             t = chunk_end
