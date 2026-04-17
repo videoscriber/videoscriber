@@ -1,5 +1,9 @@
 services:
   videoscriber:
+    # Default to the published image so `docker compose pull && up -d` works on
+    # the dev/prod servers without a local build. Local dev can still rebuild
+    # from source with `docker compose up --build`.
+    image: ghcr.io/videoscriber/videoscriber:${VIDEOSCRIBER_TAG:-latest}
     build: .
     ports:
       - "${PORT:-8000}:8000"
