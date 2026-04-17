@@ -1,6 +1,7 @@
 """Resend wrapper for transactional email (OTP fallback + notifications)."""
 import logging
 import os
+import re
 
 import resend
 from fastapi import HTTPException
@@ -9,6 +10,26 @@ logger = logging.getLogger(__name__)
 
 RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 FROM_ADDRESS = os.getenv("RESEND_FROM", "VideoScriber <auth@videoscriber.ai>")
+
+
+def extract_from_email(from_header: str) -> str:
+    """Given `"Name <email@host>"` or `"email@host"`, return just the email."""
+    m = re.search(r"<([^>]+)>", from_header or "")
+    if m:
+        return m.group(1).strip()
+    return (from_header or "").strip()
+
+
+def build_from_with_name(display_name: str | None, email_address: str) -> str:
+    """RFC-5322-ish From header. Falls back to a bare email when no display
+    name is available so we never emit an unquoted garbage header."""
+    name = (display_name or "").strip()
+    if not name:
+        return email_address
+    # Quote the name if it contains characters that would otherwise need escaping.
+    if re.search(r'[,;:"<>()@\[\]\\]', name):
+        name = '"' + name.replace('\\', '\\\\').replace('"', '\\"') + '"'
+    return f"{name} <{email_address}>"
 
 AUTH_DEV_BYPASS = os.getenv("AUTH_DEV_BYPASS", "").lower() in ("1", "true", "yes")
 

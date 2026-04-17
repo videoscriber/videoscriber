@@ -477,6 +477,12 @@ input, textarea, button, select { font-family: inherit; font-size: inherit; }
   color: var(--warning, #d97706);
   user-select: none;
 }
+.postprocess-hint {
+  margin-top: 0.25rem;
+  font-size: 0.7rem;
+  color: var(--text-secondary, #9494a8);
+  font-style: italic;
+}
 .postprocess-details pre {
   margin: 0.4rem 0 0;
   padding: 0.5rem 0.6rem;
