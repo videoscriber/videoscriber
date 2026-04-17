@@ -365,6 +365,11 @@ async def privacy_page(request: Request):
     return templates.TemplateResponse(request, "legal/privacy.html")
 
 
+@app.get("/brand", response_class=HTMLResponse)
+async def brand_page(request: Request):
+    return templates.TemplateResponse(request, "brand.html")
+
+
 _release_cache: dict = {"data": None, "fetched_at": 0.0}
 _RELEASE_CACHE_TTL = 300  # 5 minutes
 _RELEASE_URL = "https://api.github.com/repos/videoscriber/videoscriber/releases/latest"

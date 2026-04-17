@@ -10,7 +10,7 @@
 <section class="hero" style="padding-top: 60px;">
     <div class="hero-chip">
         <span class="chip-dot"></span>
-        <span>Open source &mdash; MIT licensed</span>
+        <span>Open source, MIT licensed</span>
     </div>
     <h1 class="hero-title">Run Videoscriber <span class="grad">on your own Mac.</span></h1>
     <p class="hero-lead">
@@ -21,7 +21,7 @@
             {% set dmg = release.dmg_assets[0] %}
             <a href="{{ dmg.url }}" class="btn-glow" download>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                Download for Mac &mdash; {{ release.tag }}
+                Download for Mac ({{ release.tag }})
             </a>
             <a href="{{ release.html_url }}" rel="noopener" target="_blank" class="btn-glass">
                 All releases &amp; versions
@@ -39,7 +39,7 @@
 <section class="section reveal">
     <div class="section-kicker">Prerequisites</div>
     <h2 class="section-title">What you need <span class="grad">before first launch.</span></h2>
-    <p class="section-lead">The desktop app is a developer-focused build &mdash; it expects Python and ffmpeg on your machine, plus your own API keys. We&rsquo;ll bundle these in a future release.</p>
+    <p class="section-lead">The desktop app is a developer-focused build. It expects Python and ffmpeg on your machine, plus your own API keys. We&rsquo;ll bundle these in a future release.</p>
 
     <div class="features-grid">
         <article class="feature-card">
@@ -47,21 +47,21 @@
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 18l6-6-6-6"/><path d="M8 6l-6 6 6 6"/></svg>
             </div>
             <h3>Python 3.12</h3>
-            <p><code>brew install python@3.12</code> &mdash; the app launches a local Python backend and expects it on your <code>PATH</code>.</p>
+            <p><code>brew install python@3.12</code>. The app launches a local Python backend and expects it on your <code>PATH</code>.</p>
         </article>
         <article class="feature-card">
             <div class="feature-icon">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
             </div>
             <h3>ffmpeg</h3>
-            <p><code>brew install ffmpeg</code> &mdash; required to enhance and chunk audio tracks for transcription.</p>
+            <p><code>brew install ffmpeg</code>. Used to enhance and chunk audio tracks for transcription.</p>
         </article>
         <article class="feature-card">
             <div class="feature-icon">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             </div>
             <h3>Your own API keys</h3>
-            <p>OpenAI key (GPT for recap drafting) and AssemblyAI key (transcription). Both stay on your machine &mdash; we never see them.</p>
+            <p>An OpenAI key for recap drafting, an AssemblyAI key for transcription. Both stay on your machine. We never see them.</p>
         </article>
     </div>
 </section>
@@ -74,12 +74,12 @@
         <article class="step">
             <div class="step-num">01</div>
             <h3>Drag to Applications, right-click Open</h3>
-            <p>Open the <code>.dmg</code>, drag <strong>Videoscriber</strong> into <strong>Applications</strong>. First launch only: <strong>right-click</strong> the app and choose <strong>Open</strong> &mdash; Gatekeeper blocks double-click on unsigned apps. One-time prompt; Apple code-signing is on the roadmap.</p>
+            <p>Open the <code>.dmg</code>, drag <strong>Videoscriber</strong> into <strong>Applications</strong>. First launch only: <strong>right-click</strong> the app and choose <strong>Open</strong>. Gatekeeper blocks double-click on unsigned apps. One-time prompt; Apple code-signing is on the roadmap.</p>
         </article>
         <article class="step">
             <div class="step-num">02</div>
             <h3>Wait one minute</h3>
-            <p>On first launch the app sets up its local Python environment and installs dependencies automatically (~1 min). Nothing for you to do &mdash; just wait for the window.</p>
+            <p>On first launch the app sets up its local Python environment and installs dependencies automatically (~1 min). Nothing for you to do. Just wait for the window.</p>
         </article>
         <article class="step">
             <div class="step-num">03</div>
@@ -89,16 +89,147 @@
     </div>
 </section>
 
+{# ========================================================= GET YOUR KEYS === #}
 <section class="section reveal">
-    <div class="section-kicker">Prefer the cloud?</div>
-    <h2 class="section-title">We run it for you at <span class="grad">videoscriber.ai.</span></h2>
-    <p class="section-lead">Same app, managed infrastructure, 90-day encrypted backup, and no local setup. Free during beta.</p>
-    <div class="hero-cta" style="justify-content: center; margin-top: 24px;">
-        <a href="/signup" class="btn-glow">
-            Create a free cloud account
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
-        </a>
+    <div class="section-kicker">Getting your API keys</div>
+    <h2 class="section-title">Two free accounts. <span class="grad">Pay as you go.</span></h2>
+    <p class="section-lead">Both providers let you sign up free, fund a small balance, and pay only for what you use. A typical 30-minute meeting costs under $0.10 total across the two services.</p>
+
+    <div class="audience-diptych">
+        <article class="audience-panel dev">
+            <div class="audience-label">Transcription</div>
+            <h3>AssemblyAI</h3>
+            <p>Sign up at <a href="https://www.assemblyai.com/dashboard/signup" target="_blank" rel="noopener" style="color: var(--purple-light);">assemblyai.com</a>. New accounts get $50 in free credit. Past that, pay-as-you-go runs roughly $0.12 per audio hour with speaker diarization included.</p>
+            <ul class="audience-list">
+                <li>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    <span>Create an account, verify email</span>
+                </li>
+                <li>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    <span>Copy the API key from the dashboard</span>
+                </li>
+                <li>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    <span>Paste it into Videoscriber&rsquo;s setup screen</span>
+                </li>
+            </ul>
+            <a href="https://www.assemblyai.com/dashboard/signup" rel="noopener" target="_blank" class="btn-glass">Get AssemblyAI key</a>
+        </article>
+
+        <article class="audience-panel ent">
+            <div class="audience-label">Recap drafting</div>
+            <h3>OpenAI</h3>
+            <p>Sign up at <a href="https://platform.openai.com/signup" target="_blank" rel="noopener" style="color: var(--purple-light);">platform.openai.com</a>. Add a small balance ($5 is plenty to start). Videoscriber uses GPT for recap drafts at roughly $0.01 per meeting.</p>
+            <ul class="audience-list">
+                <li>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    <span>Create a platform account (separate from ChatGPT)</span>
+                </li>
+                <li>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    <span>Add billing, top up $5</span>
+                </li>
+                <li>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    <span>Generate a key at <code>platform.openai.com/api-keys</code></span>
+                </li>
+            </ul>
+            <a href="https://platform.openai.com/api-keys" rel="noopener" target="_blank" class="btn-glass">Get OpenAI key</a>
+        </article>
     </div>
+</section>
+
+{# ================================================ DATA STAYS ON YOUR MAC === #}
+<section class="section reveal">
+    <div class="section-kicker">Your data, your machine</div>
+    <h2 class="section-title">Nothing ever leaves, <span class="grad">unless you send it.</span></h2>
+    <p class="section-lead">The desktop build talks directly to the providers you configure. No Videoscriber server in the middle, no account, no telemetry.</p>
+
+    <div class="features-grid">
+        <article class="feature-card">
+            <div class="feature-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            </div>
+            <h3>Local SQLite database</h3>
+            <p>Transcripts, recaps, and metadata live in <code>~/Library/Application Support/Videoscriber</code>. Back it up, move it, delete it. Your call.</p>
+        </article>
+        <article class="feature-card">
+            <div class="feature-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            </div>
+            <h3>Direct API calls</h3>
+            <p>Audio uploads go from your Mac straight to OpenAI and AssemblyAI using your keys. No relay, no proxy, no server-side storage on our end.</p>
+        </article>
+        <article class="feature-card">
+            <div class="feature-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+            </div>
+            <h3>Zero telemetry</h3>
+            <p>No crash reporting, no usage analytics, no auto-update phone-home. The only network traffic is to the AI providers you configure.</p>
+        </article>
+    </div>
+</section>
+
+{# ============================================================ TROUBLESHOOTING === #}
+<section class="section faq reveal">
+    <div class="section-kicker">Troubleshooting</div>
+    <h2 class="section-title">If something doesn&rsquo;t work <span class="grad">on first launch.</span></h2>
+    <p class="section-lead">Common issues and quick fixes. If you hit something not covered here, <a href="https://github.com/videoscriber/videoscriber/issues" target="_blank" rel="noopener" style="color: var(--purple-light);">open a GitHub issue</a>.</p>
+
+    <div class="faq-list">
+        <details class="faq-item">
+            <summary>macOS says the app &ldquo;cannot be opened because Apple cannot check it for malicious software&rdquo;</summary>
+            <div class="faq-body">That&rsquo;s Gatekeeper blocking the unsigned build. Right-click (or Control-click) the app in Applications and choose <strong>Open</strong>, then click <strong>Open</strong> on the warning dialog. After that first time, double-click works normally. We&rsquo;ll ship signed + notarized builds once Apple Developer enrollment completes.</div>
+        </details>
+        <details class="faq-item">
+            <summary>The .dmg won&rsquo;t mount when I double-click it</summary>
+            <div class="faq-body">Strip the quarantine flag your browser set on download, then mount from Terminal:
+                <div class="code-block"><span class="prompt">$</span> xattr -d com.apple.quarantine ~/Downloads/Videoscriber-*.dmg
+<span class="prompt">$</span> open ~/Downloads/Videoscriber-*.dmg</div>
+                Or re-download with <code>curl -L -O &lt;release-url&gt;</code>, which skips the quarantine attribute entirely.
+            </div>
+        </details>
+        <details class="faq-item">
+            <summary>&ldquo;Python not found&rdquo; on first launch</summary>
+            <div class="faq-body">Install Python 3.10 or newer. Easiest: <code>brew install python@3.12</code>. After install, run <code>which python3</code> in Terminal to confirm. Then re-launch Videoscriber.</div>
+        </details>
+        <details class="faq-item">
+            <summary>&ldquo;ffmpeg not found&rdquo; on first launch</summary>
+            <div class="faq-body"><code>brew install ffmpeg</code>. Videoscriber uses it to extract audio and enhance difficult tracks before transcription. Without it, uploads fail immediately.</div>
+        </details>
+        <details class="faq-item">
+            <summary>First launch hangs for a minute with no window</summary>
+            <div class="faq-body">That&rsquo;s expected. Videoscriber is creating a Python virtual environment and installing dependencies at <code>~/Library/Application Support/Videoscriber/venv</code>. It only happens once. If it takes longer than ~3 minutes, quit the app and run <code>tail -f ~/Library/Logs/Videoscriber/*.log</code> in Terminal while you relaunch.</div>
+        </details>
+        <details class="faq-item">
+            <summary>Transcription fails with an authentication error</summary>
+            <div class="faq-body">Your API key is missing, expired, or has no billing attached. Go to <strong>Settings</strong> in the app and paste fresh keys. For AssemblyAI, check <code>assemblyai.com/dashboard</code>; for OpenAI, check <code>platform.openai.com/api-keys</code> and confirm you have a positive balance.</div>
+        </details>
+        <details class="faq-item">
+            <summary>How do I update to a newer release?</summary>
+            <div class="faq-body">Download the latest <code>.dmg</code> from this page and drag it into Applications, replacing the old copy. Your data, API keys, and venv are stored outside the app bundle, so they carry over. Auto-update is on the roadmap.</div>
+        </details>
+        <details class="faq-item">
+            <summary>Is there a Windows or Linux build?</summary>
+            <div class="faq-body">Not yet. The Electron app is Mac-only for now. The underlying FastAPI backend runs anywhere Python + ffmpeg do, so you can <code>git clone</code> the repo and run it on Windows or Linux directly. A packaged Windows build is on the roadmap.</div>
+        </details>
+        <details class="faq-item">
+            <summary>Where is my data stored?</summary>
+            <div class="faq-body"><code>~/Library/Application Support/Videoscriber/</code>: database (<code>data/</code>), uploaded recordings (<code>uploads/</code>), extracted audio (<code>audio/</code>), API keys (<code>.env</code>), and the Python venv. To wipe everything and start fresh: quit the app, delete that folder, relaunch.</div>
+        </details>
+    </div>
+</section>
+
+{# ======================================================= PREFER THE CLOUD === #}
+<section class="final-cta reveal">
+    <h2>Prefer a <span class="grad">managed option?</span></h2>
+    <p>Same app, hosted by us. Encrypted 90-day backup, no local setup, no Python or ffmpeg required. Free during beta.</p>
+    <a href="/signup" class="btn-glow">
+        Create a free cloud account
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+    </a>
+    <div class="final-cta-note">US phone verification &middot; Free during beta &middot; Cancel anytime</div>
 </section>
 
 </div>

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72" width="72" height="72">
+  <defs>
+    <linearGradient id="dCam" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#B794F6" />
+      <stop offset="50%" style="stop-color:#8B5CF6" />
+      <stop offset="100%" style="stop-color:#6D28D9" />
+    </linearGradient>
+    <linearGradient id="dLens" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#A78BFA" />
+      <stop offset="100%" style="stop-color:#7C3AED" />
+    </linearGradient>
+    <linearGradient id="wordGrad" x1="0" y1="14" x2="0" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="100%" stop-color="#ddd6fe" />
+    </linearGradient>
+  </defs>
+  <g transform="translate(36, 36)">
+    <rect x="-26" y="-27" width="54" height="54" rx="12" ry="12" fill="url(#dCam)" />
+    <path d="M 25,-16 L 38,-23 Q 42,-25 42,-21 L 42,21 Q 42,25 38,23 L 25,16 Z" fill="url(#dLens)" />
+    <g>
+      <rect x="-17" y="-10" width="29" height="4" rx="2" fill="url(#wordGrad)" opacity="0.9" />
+      <rect x="-17" y="-2"  width="36" height="4" rx="2" fill="url(#wordGrad)" opacity="0.9" />
+      <rect x="-17" y="6"   width="22" height="4" rx="2" fill="url(#wordGrad)" opacity="0.9" />
+    </g>
+  </g>
+</svg>

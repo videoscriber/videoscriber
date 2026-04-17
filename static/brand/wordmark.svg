@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 470 72" width="470" height="72">
+  <defs>
+    <linearGradient id="wordGradText" x1="0" y1="12" x2="0" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#6d28d9" />
+      <stop offset="100%" stop-color="#8b5cf6" />
+    </linearGradient>
+  </defs>
+  <text x="0" y="59"
+        font-family="'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif"
+        font-size="64" font-weight="700" letter-spacing="-0.025em"
+        fill="url(#wordGradText)">videoscriber</text>
+</svg>
