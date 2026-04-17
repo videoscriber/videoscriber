@@ -43,7 +43,7 @@ Desktop wrapper is Electron in `desktop/` — spawns Python as subprocess.
 ## Environment Variables
 
 Required: `OPENAI_API_KEY`
-Optional: `ASSEMBLYAI_API_KEY`, `SMTP_*`, `SYNC_KEY`, `RECAP_MODEL`
+Optional: `ASSEMBLYAI_API_KEY`, `RESEND_API_KEY`, `SYNC_KEY`, `RECAP_MODEL`
 See `.env.example` for full list.
 
 ## Don't Forget
