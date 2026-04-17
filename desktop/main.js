@@ -39,11 +39,16 @@ function findAvailablePort() {
 }
 
 function findPython() {
-  // Check for bundled Python first, then system Python
+  // Prefer the per-user venv created by scripts/setup-mac.sh.
+  const userVenv = path.join(app.getPath('userData'), 'venv', 'bin', 'python');
+  if (fs.existsSync(userVenv)) return userVenv;
+
+  // Fallback: bundled venv (only exists if the build produced one).
   const bundledVenv = path.join(resourcesPath, '.venv', 'bin', 'python');
   if (fs.existsSync(bundledVenv)) return bundledVenv;
 
-  // Try system python
+  // Last resort: system python. Imports will fail unless requirements are
+  // installed globally — setup-mac.sh is the supported path.
   for (const cmd of ['python3', 'python']) {
     try {
       const result = execSync(`which ${cmd}`, { encoding: 'utf8' }).trim();
@@ -51,6 +56,14 @@ function findPython() {
     } catch {}
   }
   return null;
+}
+
+function setupScriptPath() {
+  return path.join(resourcesPath, 'scripts', 'setup-mac.sh');
+}
+
+function userVenvPath() {
+  return path.join(app.getPath('userData'), 'venv');
 }
 
 function findFfmpeg() {
@@ -70,7 +83,21 @@ async function startPythonBackend() {
   const pythonPath = findPython();
   if (!pythonPath) {
     dialog.showErrorBox('Python not found',
-      'Videoscriber requires Python 3.10+. Please install Python and try again.');
+      'Videoscriber requires Python 3.10+.\n\n' +
+      'Install Python (e.g. `brew install python@3.12`), then run the setup script:\n\n' +
+      setupScriptPath());
+    app.quit();
+    return;
+  }
+
+  // If we're falling back to system python, the app.py imports will fail because
+  // FastAPI + friends are not globally installed. Nudge the user to run setup.
+  if (!fs.existsSync(userVenvPath())) {
+    dialog.showErrorBox('First-run setup required',
+      'Videoscriber stores its Python dependencies in a per-user venv. Open ' +
+      'Terminal and run:\n\n' +
+      `bash "${setupScriptPath()}"\n\n` +
+      'Then launch Videoscriber again.');
     app.quit();
     return;
   }
@@ -78,7 +105,7 @@ async function startPythonBackend() {
   const ffmpegDir = findFfmpeg();
   if (!ffmpegDir) {
     dialog.showErrorBox('ffmpeg not found',
-      'Videoscriber requires ffmpeg. Please install ffmpeg and try again.\n\nbrew install ffmpeg');
+      'Videoscriber requires ffmpeg.\n\nbrew install ffmpeg');
     app.quit();
     return;
   }
@@ -93,14 +120,20 @@ async function startPythonBackend() {
     PORT: String(serverPort),
   };
 
-  // Load .env file if it exists
-  const envFile = path.join(resourcesPath, '.env');
-  if (fs.existsSync(envFile)) {
+  // Prefer the user-data .env (written by setup-mac.sh); fall back to a .env
+  // next to the bundled backend (useful for `npm start` during development).
+  const envCandidates = [
+    path.join(app.getPath('userData'), '.env'),
+    path.join(resourcesPath, '.env'),
+  ];
+  for (const envFile of envCandidates) {
+    if (!fs.existsSync(envFile)) continue;
     const lines = fs.readFileSync(envFile, 'utf8').split('\n');
     for (const line of lines) {
       const match = line.match(/^([^#=]+)=(.*)$/);
       if (match) env[match[1].trim()] = match[2].trim();
     }
+    break;
   }
 
   // Override data paths to use app data directory

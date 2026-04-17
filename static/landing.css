@@ -112,10 +112,15 @@
     max-width: 820px;
 }
 .section-title .grad {
-    background: linear-gradient(180deg, #ffffff 0%, var(--purple-light) 100%);
+    background: linear-gradient(180deg, #4c1d95 0%, #7c3aed 100%);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
+}
+[data-theme="dark"] .section-title .grad {
+    background: linear-gradient(180deg, #ffffff 0%, var(--purple-light) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
 }
 .section-lead {
     font-size: clamp(16px, 1.3vw, 18px);
@@ -201,10 +206,15 @@
     text-wrap: balance;
 }
 .hero-title .grad {
-    background: linear-gradient(180deg, #ffffff 0%, var(--purple-light) 100%);
+    background: linear-gradient(180deg, #4c1d95 0%, #7c3aed 100%);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
+}
+[data-theme="dark"] .hero-title .grad {
+    background: linear-gradient(180deg, #ffffff 0%, var(--purple-light) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
 }
 @keyframes rise {
     from { opacity: 0; transform: translateY(24px); }
@@ -901,6 +911,18 @@
     line-height: 1.05;
     letter-spacing: -0.03em;
     margin: 0 0 20px;
+    color: var(--text);
+}
+.final-cta h2 .grad {
+    background: linear-gradient(180deg, #4c1d95 0%, #7c3aed 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+[data-theme="dark"] .final-cta h2 .grad {
+    background: linear-gradient(180deg, #ffffff 0%, var(--purple-light) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
 }
 .final-cta p {
     font-size: 17px;

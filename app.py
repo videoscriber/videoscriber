@@ -1,8 +1,12 @@
 import asyncio
+import json
 import logging
 import os
 import re
 import shutil
+import time
+import urllib.error
+import urllib.request
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -340,6 +344,53 @@ async def terms_page(request: Request):
 @app.get("/privacy", response_class=HTMLResponse)
 async def privacy_page(request: Request):
     return templates.TemplateResponse(request, "legal/privacy.html")
+
+
+_release_cache: dict = {"data": None, "fetched_at": 0.0}
+_RELEASE_CACHE_TTL = 300  # 5 minutes
+_RELEASE_URL = "https://api.github.com/repos/videoscriber/videoscriber/releases/latest"
+
+
+def _fetch_latest_release_sync() -> dict | None:
+    now = time.time()
+    if _release_cache["data"] and (now - _release_cache["fetched_at"]) < _RELEASE_CACHE_TTL:
+        return _release_cache["data"]
+    try:
+        req = urllib.request.Request(
+            _RELEASE_URL,
+            headers={
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "videoscriber-landing",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read())
+    except (urllib.error.URLError, OSError, json.JSONDecodeError, TimeoutError):
+        return _release_cache["data"]
+    dmg_assets = [
+        {"name": a.get("name"), "url": a.get("browser_download_url"), "size": a.get("size", 0)}
+        for a in data.get("assets") or []
+        if (a.get("name") or "").endswith(".dmg")
+    ]
+    result = {
+        "tag": data.get("tag_name"),
+        "published_at": data.get("published_at"),
+        "html_url": data.get("html_url"),
+        "dmg_assets": dmg_assets,
+    }
+    _release_cache["data"] = result
+    _release_cache["fetched_at"] = now
+    return result
+
+
+@app.get("/download", response_class=HTMLResponse)
+async def download_page(request: Request):
+    release = await asyncio.to_thread(_fetch_latest_release_sync)
+    return templates.TemplateResponse(
+        request,
+        "download.html",
+        {"release": release},
+    )
 
 
 @app.get("/health")

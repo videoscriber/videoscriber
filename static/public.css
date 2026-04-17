@@ -314,10 +314,7 @@
     letter-spacing: -0.03em;
     line-height: 1.05;
     margin: 0 0 24px;
-    background: linear-gradient(180deg, #ffffff 0%, #a78bfa 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
+    color: var(--text);
 }
 .hero p.lead {
     font-size: clamp(16px, 2vw, 20px);
