@@ -280,6 +280,9 @@ async def _cleanup_orphans() -> None:
 app = FastAPI(lifespan=lifespan)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+# Expose desktop-mode flag to every template so layouts can clear macOS
+# traffic-light overlap and mark header regions as draggable.
+templates.env.globals["desktop_mode"] = DESKTOP_MODE
 app.include_router(auth_routes.router)
 app.include_router(chat_routes.router)
 app.include_router(domain_routes.router)

@@ -53,7 +53,7 @@
     <link rel="stylesheet" href="/static/public.css">
     {% block extra_css %}{% endblock %}
 </head>
-<body class="public-body">
+<body class="public-body{% if desktop_mode %} is-desktop{% endif %}">
     <header class="public-header">
         <a href="/" class="public-brand" aria-label="Videoscriber home">
             <img src="/static/brand/logo.svg?v=5" alt="Videoscriber" class="brand-logo">
