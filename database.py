@@ -1,4 +1,5 @@
 import json
+import re
 import aiosqlite
 from datetime import datetime, timezone
 from pathlib import Path
@@ -203,23 +204,40 @@ async def _migrate_users_phone_nullable(db: aiosqlite.Connection) -> None:
     )
 
 
-async def _migrate_users_dedupe(db: aiosqlite.Connection) -> None:
-    """Before we CREATE UNIQUE INDEX on users.email/phone, remove duplicates
-    the old schema allowed through. Keep the oldest row per email/phone so we
-    don't surprise users whose account predates the tightening.
+_PARTIAL_UNIQUE_INDEX_RE = re.compile(
+    r"CREATE\s+UNIQUE\s+INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?"
+    r"\S+\s+ON\s+(?P<table>\w+)\s*\(\s*(?P<column>\w+)\s*\)\s+"
+    r"WHERE\s+\w+\s+IS\s+NOT\s+NULL",
+    re.IGNORECASE,
+)
 
-    Pattern: when you tighten the users schema (UNIQUE, NOT NULL, CHECK), add
-    a sibling cleanup here. It runs before executescript(SCHEMA), so the
-    index-creation assertions on a fresh migration will always succeed."""
-    async with db.execute("PRAGMA table_info(users)") as cur:
-        cols = [row async for row in cur]
-    if not cols:
-        return
-    for column in ("email", "phone"):
-        # Partial unique index only cares about non-null values.
+
+def _partial_unique_indexes(schema_sql: str) -> list[tuple[str, str]]:
+    """Return [(table, column), ...] for every partial-unique index in SCHEMA.
+    Keeps `_migrate_enforce_unique_indexes` generic: add a UNIQUE INDEX and
+    the next startup heals any pre-existing duplicates, no new code needed."""
+    return [
+        (m.group("table"), m.group("column"))
+        for m in _PARTIAL_UNIQUE_INDEX_RE.finditer(schema_sql)
+    ]
+
+
+async def _migrate_enforce_unique_indexes(
+    db: aiosqlite.Connection, schema_sql: str = SCHEMA
+) -> None:
+    """For every partial-unique index declared in SCHEMA, drop duplicate rows
+    so the CREATE UNIQUE INDEX assertion in executescript() will succeed.
+    Strategy: keep MIN(rowid) per non-null value (oldest row wins)."""
+    async with db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+    ) as cur:
+        existing_tables = {row[0] async for row in cur}
+    for table, column in _partial_unique_indexes(schema_sql):
+        if table not in existing_tables:
+            continue  # table will be fresh-created by SCHEMA; nothing to dedupe
         await db.execute(
-            f"DELETE FROM users WHERE rowid NOT IN ("
-            f"  SELECT MIN(rowid) FROM users "
+            f"DELETE FROM {table} WHERE rowid NOT IN ("
+            f"  SELECT MIN(rowid) FROM {table} "
             f"  WHERE {column} IS NOT NULL GROUP BY {column}"
             f") AND {column} IS NOT NULL"
         )
@@ -230,7 +248,9 @@ async def init_db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(DB_PATH) as db:
         await _migrate_users_phone_nullable(db)
-        await _migrate_users_dedupe(db)
+        # Scans SCHEMA and auto-heals duplicates for every partial-unique
+        # index, so new UNIQUE tightenings don't need a hand-written migrator.
+        await _migrate_enforce_unique_indexes(db)
         await db.executescript(SCHEMA)
 
         # Migrate transcriptions: add new columns if missing

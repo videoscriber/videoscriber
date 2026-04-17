@@ -13,6 +13,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Need history + refs so check_schema_migrations can diff against main.
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -31,6 +34,9 @@ jobs:
 
       - name: Lint with Ruff
         run: ruff check app.py transcriber.py database.py
+
+      - name: Guard schema migrations
+        run: python scripts/check_schema_migrations.py
 
       - name: Syntax check
         run: |
