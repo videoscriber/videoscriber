@@ -49,16 +49,18 @@ async def _run_ffmpeg(args: list[str]) -> tuple[int, bytes]:
         raise
 
 
-async def enhance_video(input_path: Path, output_path: Path) -> bool:
+async def enhance_video(input_path: Path, output_path: Path) -> tuple[bool, str | None]:
     """Produce a web-optimized proxy: cap resolution at 1080p (keeping aspect
     ratio), H.264 + faststart, enhanced with mild denoise/sharpen. Writes to a
     .tmp path and atomically renames on success so an interrupted ffmpeg can
-    never leave a corrupt final file."""
+    never leave a corrupt final file.
+
+    Returns (ok, error). On failure, `error` is the tail of ffmpeg stderr
+    (or the exception repr) so the caller can persist it for diagnosis.
+    """
     tmp_path = output_path.with_suffix(output_path.suffix + ".tmp")
     tmp_path.unlink(missing_ok=True)
     try:
-        # scale='min(1920,iw)':'min(1080,ih)':force_original_aspect_ratio=decrease
-        # Only downscales when source is larger; never upscales.
         filtergraph = (
             "scale='if(gt(iw,1920),1920,iw)':'if(gt(ih,1080),1080,ih)':"
             "force_original_aspect_ratio=decrease:flags=lanczos,"
@@ -68,7 +70,7 @@ async def enhance_video(input_path: Path, output_path: Path) -> bool:
         )
 
         # Hardware-accelerated encoding first (Apple VideoToolbox — ~10-20x faster)
-        rc, stderr = await _run_ffmpeg([
+        rc_hw, stderr_hw = await _run_ffmpeg([
             "ffmpeg", "-i", str(input_path),
             "-vf", filtergraph,
             "-c:v", "h264_videotoolbox", "-q:v", "60",
@@ -77,12 +79,13 @@ async def enhance_video(input_path: Path, output_path: Path) -> bool:
             "-pix_fmt", "yuv420p",
             str(tmp_path), "-y",
         ])
+        rc, stderr = rc_hw, stderr_hw
 
         # Fall back to software encoding if hardware fails
-        if rc != 0:
+        if rc_hw != 0:
             logger.info("Hardware encoding unavailable, falling back to software")
             tmp_path.unlink(missing_ok=True)
-            rc, stderr = await _run_ffmpeg([
+            rc_sw, stderr_sw = await _run_ffmpeg([
                 "ffmpeg", "-i", str(input_path),
                 "-vf", filtergraph,
                 "-c:v", "libx264", "-preset", "fast", "-crf", "22",
@@ -92,20 +95,20 @@ async def enhance_video(input_path: Path, output_path: Path) -> bool:
                 "-pix_fmt", "yuv420p",
                 str(tmp_path), "-y",
             ])
+            rc, stderr = rc_sw, stderr_sw
 
         if rc != 0:
-            logger.warning("Video enhancement failed: %s", stderr.decode()[-500:])
+            err = _format_ffmpeg_error(stderr, rc_hw, stderr_hw)
+            logger.warning("Video enhancement failed: %s", err[-500:])
             tmp_path.unlink(missing_ok=True)
-            return False
+            return False, err
 
         if tmp_path.exists() and tmp_path.stat().st_size > 0:
-            # Atomic rename — the final file only ever appears when ffmpeg
-            # finished writing and the moov atom is in place.
             tmp_path.replace(output_path)
-            return True
+            return True, None
         else:
             tmp_path.unlink(missing_ok=True)
-            return False
+            return False, "ffmpeg reported success but produced no output file"
 
     except asyncio.CancelledError:
         tmp_path.unlink(missing_ok=True)
@@ -113,7 +116,22 @@ async def enhance_video(input_path: Path, output_path: Path) -> bool:
     except Exception as e:
         logger.warning("Video enhancement failed (non-fatal): %s", e)
         tmp_path.unlink(missing_ok=True)
-        return False
+        return False, repr(e)
+
+
+def _format_ffmpeg_error(final_stderr: bytes, rc_hw: int, stderr_hw: bytes) -> str:
+    """Build a human-readable failure reason, preserving both attempts when the
+    software fallback also failed. Truncated to 2 KB so we never blow up the row."""
+    parts: list[str] = []
+    if rc_hw != 0 and stderr_hw is not final_stderr:
+        parts.append("[hardware (h264_videotoolbox)]")
+        parts.append(stderr_hw.decode(errors="replace").strip())
+        parts.append("\n[software (libx264)]")
+    parts.append(final_stderr.decode(errors="replace").strip())
+    text = "\n".join(parts)
+    if len(text) > 2048:
+        text = "…" + text[-2048:]
+    return text
 
 
 async def extract_audio(video_path: Path, output_path: Path) -> float:
@@ -442,15 +460,20 @@ async def post_process(job_id: str, all_segments: list[dict], plain_text: str,
     elif isinstance(enhance_res, Exception):
         logger.warning("Video enhancement crashed (non-fatal): %s", enhance_res)
         updates["enhancement_status"] = "failed"
+        updates["enhancement_error"] = repr(enhance_res)
         updates["video_path"] = str(video_path)
-    elif enhance_res:
-        enhanced_path = video_path.parent / f"{video_path.stem}_enhanced.mp4"
-        video_path.unlink(missing_ok=True)
-        updates["video_path"] = str(enhanced_path)
-        updates["enhancement_status"] = "ok"
     else:
-        updates["enhancement_status"] = "failed"
-        updates["video_path"] = str(video_path)
+        ok, reason = enhance_res
+        if ok:
+            enhanced_path = video_path.parent / f"{video_path.stem}_enhanced.mp4"
+            video_path.unlink(missing_ok=True)
+            updates["video_path"] = str(enhanced_path)
+            updates["enhancement_status"] = "ok"
+            updates["enhancement_error"] = None
+        else:
+            updates["enhancement_status"] = "failed"
+            updates["enhancement_error"] = reason
+            updates["video_path"] = str(video_path)
 
     await db.update_transcription(job_id, **updates)
 

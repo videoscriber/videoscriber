@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS transcriptions (
     recap_status TEXT,
     speaker_id_status TEXT,
     enhancement_status TEXT,
+    enhancement_error TEXT,
     created_at TEXT NOT NULL,
     completed_at TEXT
 );
@@ -149,6 +150,7 @@ MIGRATION_COLUMNS = [
     ("recap_status", "TEXT"),
     ("speaker_id_status", "TEXT"),
     ("enhancement_status", "TEXT"),
+    ("enhancement_error", "TEXT"),
     ("user_id", "TEXT"),
 ]
 
@@ -561,7 +563,7 @@ async def update_transcription(id: str, **fields):
         "transcript_vtt", "transcript_segments_json", "duration_seconds", "file_size",
         "total_chunks", "completed_chunks", "processing_started_at", "video_path",
         "retry_count", "recap", "recap_status", "speaker_id_status", "enhancement_status",
-        "completed_at",
+        "enhancement_error", "completed_at",
     }
     for k in fields:
         if k not in allowed:

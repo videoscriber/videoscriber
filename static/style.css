@@ -468,6 +468,30 @@ input, textarea, button, select { font-family: inherit; font-size: inherit; }
 
 .postprocess-retry:disabled { opacity: 0.6; cursor: wait; }
 
+.postprocess-details {
+  margin-top: 0.4rem;
+  font-size: 0.7rem;
+}
+.postprocess-details summary {
+  cursor: pointer;
+  color: var(--warning, #d97706);
+  user-select: none;
+}
+.postprocess-details pre {
+  margin: 0.4rem 0 0;
+  padding: 0.5rem 0.6rem;
+  max-height: 200px;
+  overflow: auto;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 0.25rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+  line-height: 1.3;
+  color: var(--text-secondary, #9494a8);
+}
+
 .item-progress { width: 64px; }
 .item-progress progress {
   transition: none;

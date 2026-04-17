@@ -274,7 +274,10 @@ function renderPostprocessBanner(data) {
     items.push({ label: 'Speaker name identification failed — generic labels kept' });
   }
   if (data.enhancement_status === 'failed') {
-    items.push({ label: 'Video enhancement failed — original video kept' });
+    items.push({
+      label: 'Video enhancement failed — original video kept',
+      details: data.enhancement_error || null,
+    });
   }
   if (!items.length) {
     banner.hidden = true;
@@ -286,7 +289,10 @@ function renderPostprocessBanner(data) {
     const retry = it.retry === 'recap'
       ? '<button class="postprocess-retry" data-retry="recap">Try again</button>'
       : '';
-    return `<div class="postprocess-warning-item"><span>${escapeHtml(it.label)}</span>${retry}</div>`;
+    const details = it.details
+      ? `<details class="postprocess-details"><summary>Show details</summary><pre>${escapeHtml(it.details)}</pre></details>`
+      : '';
+    return `<div class="postprocess-warning-item"><span>${escapeHtml(it.label)}</span>${retry}</div>${details}`;
   }).join('');
   const retryBtn = banner.querySelector('[data-retry="recap"]');
   if (retryBtn) {
