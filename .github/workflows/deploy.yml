@@ -46,6 +46,26 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
+  deploy-dev:
+    name: Deploy to dev server
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH deploy
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEV_SSH_HOST }}
+          username: ${{ secrets.DEV_SSH_USER }}
+          key: ${{ secrets.DEV_SSH_KEY }}
+          script: |
+            set -euxo pipefail
+            cd "${{ secrets.DEV_DEPLOY_PATH }}"
+            git fetch --tags origin
+            git checkout "${{ github.ref_name }}"
+            docker compose pull
+            docker compose up -d
+            docker compose ps
+
   build-desktop:
     name: Build Mac Desktop App
     runs-on: macos-latest
