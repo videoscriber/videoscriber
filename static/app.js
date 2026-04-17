@@ -177,11 +177,7 @@ function updateListItemContent(el, item) {
 
   let progressHtml = '';
   if (item.status === 'transcribing' || item.status === 'extracting') {
-    let chunkInfo = '';
-    if (item.total_chunks && item.completed_chunks !== null && item.status === 'transcribing') {
-      chunkInfo = `<span style="font-size:0.6rem;color:var(--pico-muted-color)">Chunk ${item.completed_chunks}/${item.total_chunks}</span>`;
-    }
-    progressHtml = `<div class="item-progress"><progress value="${item.progress}" max="100"></progress>${chunkInfo}</div>`;
+    progressHtml = `<div class="item-progress"><progress value="${item.progress}" max="100"></progress></div>`;
   }
 
   let actionsHtml = '';
@@ -691,6 +687,14 @@ function initRecap() {
 async function generateRecap(regenerate = false) {
   if (!activeJobId) return;
   openRecapModal();
+
+  // Fast path: the recap was pre-generated during post-processing. Open the
+  // editor immediately so the user sees real content, not a spinner.
+  if (!regenerate && activeRecord?.recap) {
+    populateRecapEditor(activeRecord.recap);
+    return;
+  }
+
   recapLoading.hidden = false;
   recapEditor.hidden = true;
   recapActions.hidden = true;
@@ -711,6 +715,8 @@ async function generateRecap(regenerate = false) {
       return;
     }
 
+    // Cache on the in-memory record so subsequent opens are instant too
+    if (activeRecord) activeRecord.recap = data.recap;
     populateRecapEditor(data.recap);
   } catch (e) {
     const msg = e.name === 'AbortError' ? 'Recap generation timed out' : 'Failed to generate recap';

@@ -50,22 +50,12 @@ export function renderProcessing(record) {
   const progressBar = document.getElementById('processing-progress-bar');
   const detail = document.getElementById('processing-detail');
 
-  const label = record.status === 'extracting' ? 'Extracting audio...' : 'Transcribing...';
+  const pct = Math.max(1, Math.min(100, record.progress || 0));
+  const label = record.status === 'extracting' ? 'Preparing your recording' : 'Transcribing';
   status.textContent = label;
-  progress.value = record.progress;
-  if (progressBar) progressBar.style.width = `${record.progress}%`;
-
-  let detailText = `${record.progress}%`;
-  if (record.total_chunks && record.completed_chunks !== null) {
-    detailText = `Chunk ${record.completed_chunks}/${record.total_chunks}`;
-    if (record.processing_started_at && record.completed_chunks > 0) {
-      const elapsed = (Date.now() - new Date(record.processing_started_at).getTime()) / 1000;
-      const rate = record.completed_chunks / elapsed;
-      const remaining = (record.total_chunks - record.completed_chunks) / rate;
-      detailText += ` \u2022 ~${formatTime(remaining)} remaining`;
-    }
-  }
-  detail.textContent = detailText;
+  progress.value = pct;
+  if (progressBar) progressBar.style.width = `${pct}%`;
+  detail.textContent = `${pct}%`;
 }
 
 export function renderError(record) {

@@ -358,22 +358,49 @@
 .processing-state p { font-weight: 600; font-size: 0.95rem; color: var(--text); }
 
 .progress-track {
-  width: 220px;
-  height: 4px;
-  background: var(--surface-3);
-  border-radius: 4px;
+  position: relative;
+  width: 280px;
+  max-width: 80vw;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
   overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
 .progress-fill {
+  position: relative;
   height: 100%;
-  background: var(--grad);
-  border-radius: 4px;
-  transition: width 0.5s var(--ease);
+  background: linear-gradient(90deg, #a78bfa, #6366f1 55%, #4f46e5);
+  border-radius: 999px;
+  transition: width 600ms cubic-bezier(0.16, 1, 0.3, 1);
   width: 0%;
+  box-shadow: 0 0 12px rgba(139, 92, 246, 0.45);
+}
+/* Shimmer sweep over the fill while transcribing */
+.progress-fill::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(110deg, transparent 0%, rgba(255,255,255,0.35) 50%, transparent 100%);
+  transform: translateX(-100%);
+  animation: progress-shimmer 1.6s ease-in-out infinite;
+  border-radius: inherit;
+}
+@keyframes progress-shimmer {
+  to { transform: translateX(100%); }
 }
 
-.processing-state small { color: var(--text-muted); font-size: 0.75rem; }
+.processing-state small {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-fill::after { animation: none; display: none; }
+  .progress-fill { transition: none; }
+}
 
 /* ============================================
    ERROR STATE

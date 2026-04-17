@@ -279,6 +279,25 @@ async def generate_recap(plain_text: str, client: AsyncOpenAI) -> str:
 # Post-processing: speaker names + recap (runs after transcription)
 # ============================================================
 
+async def _tick_progress(job_id: str, start_pct: int, end_pct: int, estimated_s: float):
+    """Tick `progress` from start_pct -> (end_pct - 1) smoothly over `estimated_s`.
+    Runs until cancelled; intermediate per-batch updates will override as they land."""
+    import time as _time
+    started = _time.monotonic()
+    span = max(1, end_pct - 1 - start_pct)
+    try:
+        while True:
+            elapsed = _time.monotonic() - started
+            frac = min(elapsed / max(estimated_s, 1.0), 1.0)
+            pct = start_pct + int(frac * span)
+            if pct > end_pct - 1:
+                pct = end_pct - 1
+            await db.update_transcription(job_id, progress=pct)
+            await asyncio.sleep(1.5)
+    except asyncio.CancelledError:
+        pass
+
+
 async def post_process(job_id: str, all_segments: list[dict], plain_text: str,
                        video_path: Path | None = None):
     """Speaker names, recap, and video enhancement — parallel, non-fatal. Records status per subtask."""
@@ -407,36 +426,42 @@ async def process_transcription(job_id: str, video_path: Path, audio_dir: Path, 
             job_id, total_chunks=total_chunks, completed_chunks=0,
         )
 
-        # Stage 3: Transcribe chunks in parallel (batches of 8)
+        # Stage 3: Transcribe chunks in parallel (batches of 8).
+        # Run a progress ticker alongside so single-chunk files (and the time
+        # between batch completions) don't stall at a fixed percentage.
         all_segments = []
         PARALLEL_BATCH = 8
         completed = 0
+        whisper_estimated_s = max(20.0, (duration or 60.0) * 0.20)
+        stage_tick = asyncio.create_task(_tick_progress(job_id, 15, 92, whisper_estimated_s))
+        try:
+            for batch_start in range(0, total_chunks, PARALLEL_BATCH):
+                batch = list(enumerate(chunks[batch_start:batch_start + PARALLEL_BATCH], start=batch_start))
 
-        for batch_start in range(0, total_chunks, PARALLEL_BATCH):
-            batch = list(enumerate(chunks[batch_start:batch_start + PARALLEL_BATCH], start=batch_start))
+                async def transcribe_chunk(idx, path):
+                    chunk_offset = idx * CHUNK_DURATION if total_chunks > 1 else 0
+                    result = await transcribe_file(client, path)
+                    segs = []
+                    for seg in result.get("segments", []):
+                        segs.append({
+                            "start": seg["start"] + chunk_offset,
+                            "end": seg["end"] + chunk_offset,
+                            "text": seg["text"],
+                        })
+                    return idx, segs
 
-            async def transcribe_chunk(idx, path):
-                chunk_offset = idx * CHUNK_DURATION if total_chunks > 1 else 0
-                result = await transcribe_file(client, path)
-                segs = []
-                for seg in result.get("segments", []):
-                    segs.append({
-                        "start": seg["start"] + chunk_offset,
-                        "end": seg["end"] + chunk_offset,
-                        "text": seg["text"],
-                    })
-                return idx, segs
+                results = await asyncio.gather(*(transcribe_chunk(idx, path) for idx, path in batch))
 
-            results = await asyncio.gather(*(transcribe_chunk(idx, path) for idx, path in batch))
+                for idx, segs in sorted(results, key=lambda x: x[0]):
+                    all_segments.extend(segs)
 
-            for idx, segs in sorted(results, key=lambda x: x[0]):
-                all_segments.extend(segs)
-
-            completed += len(batch)
-            progress = 15 + int(completed / total_chunks * 80)
-            await db.update_transcription(
-                job_id, progress=progress, completed_chunks=completed,
-            )
+                completed += len(batch)
+                progress = 15 + int(completed / total_chunks * 80)
+                await db.update_transcription(
+                    job_id, progress=progress, completed_chunks=completed,
+                )
+        finally:
+            stage_tick.cancel()
 
         # Stage 4: Generate output formats
         plain_text = " ".join(seg["text"].strip() for seg in all_segments)
@@ -508,27 +533,16 @@ async def process_transcription_assemblyai(
         )
         transcriber = aai.Transcriber()
 
-        # Kick off the blocking transcribe call in a thread, then tick progress
-        # every 2s while it runs. AssemblyAI typically finishes in 10-30% of
-        # audio duration; we estimate 25% and cap progress at 80 so the final
-        # jump to 85 still reads as "just finished".
-        import time as _time
-        trans_task = asyncio.create_task(
-            asyncio.to_thread(transcriber.transcribe, str(audio_path), config=config)
-        )
-        started = _time.monotonic()
-        estimated_s = max(30.0, (duration or 60.0) * 0.30)
-        while not trans_task.done():
-            elapsed = _time.monotonic() - started
-            pct = 15 + int(min(elapsed / estimated_s, 1.0) * 65)
-            pct = min(pct, 80)
-            await db.update_transcription(job_id, progress=pct)
-            try:
-                await asyncio.wait_for(asyncio.shield(trans_task), timeout=2.0)
-                break
-            except asyncio.TimeoutError:
-                continue
-        transcript = await trans_task
+        # Run the blocking transcribe call on a thread and tick progress smoothly
+        # until it finishes. Estimate ~25% of audio duration for the API.
+        estimated_s = max(30.0, (duration or 60.0) * 0.25)
+        tick_task = asyncio.create_task(_tick_progress(job_id, 15, 82, estimated_s))
+        try:
+            transcript = await asyncio.to_thread(
+                transcriber.transcribe, str(audio_path), config=config
+            )
+        finally:
+            tick_task.cancel()
 
         if transcript.status == aai.TranscriptStatus.error:
             raise RuntimeError(f"AssemblyAI error: {transcript.error}")
