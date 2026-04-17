@@ -24,6 +24,9 @@ CREATE TABLE IF NOT EXISTS transcriptions (
     video_path TEXT,
     retry_count INTEGER DEFAULT 0,
     recap TEXT,
+    recap_status TEXT,
+    speaker_id_status TEXT,
+    enhancement_status TEXT,
     created_at TEXT NOT NULL,
     completed_at TEXT
 );
@@ -37,6 +40,9 @@ MIGRATION_COLUMNS = [
     ("video_path", "TEXT"),
     ("retry_count", "INTEGER DEFAULT 0"),
     ("recap", "TEXT"),
+    ("recap_status", "TEXT"),
+    ("speaker_id_status", "TEXT"),
+    ("enhancement_status", "TEXT"),
 ]
 
 
@@ -81,7 +87,8 @@ async def update_transcription(id: str, **fields):
         "filename", "status", "progress", "error_message", "transcript_text", "transcript_srt",
         "transcript_vtt", "transcript_segments_json", "duration_seconds", "file_size",
         "total_chunks", "completed_chunks", "processing_started_at", "video_path",
-        "retry_count", "recap", "completed_at",
+        "retry_count", "recap", "recap_status", "speaker_id_status", "enhancement_status",
+        "completed_at",
     }
     for k in fields:
         if k not in allowed:
@@ -112,7 +119,8 @@ async def list_transcriptions() -> list[dict]:
         async with db.execute(
             "SELECT id, filename, status, progress, error_message, duration_seconds, "
             "file_size, total_chunks, completed_chunks, processing_started_at, "
-            "video_path, retry_count, recap, created_at, completed_at "
+            "video_path, retry_count, recap, recap_status, speaker_id_status, "
+            "enhancement_status, created_at, completed_at "
             "FROM transcriptions ORDER BY created_at DESC"
         ) as cursor:
             rows = await cursor.fetchall()
