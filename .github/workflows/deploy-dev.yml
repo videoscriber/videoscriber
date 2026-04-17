@@ -1,9 +1,8 @@
-name: Deploy
+name: Deploy to Dev
 
 on:
   push:
-    tags:
-      - "v*"
+    branches: [dev]
 
 env:
   REGISTRY: ghcr.io
@@ -11,7 +10,7 @@ env:
 
 jobs:
   build-and-push:
-    name: Build & Push Docker Image
+    name: Build & Push :dev image
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -33,10 +32,8 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha
-            type=raw,value=latest
+            type=raw,value=dev
+            type=sha,prefix=dev-sha-
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -46,7 +43,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-  deploy-dev:
+  deploy:
     name: Deploy to dev server
     needs: build-and-push
     runs-on: ubuntu-latest
@@ -60,48 +57,10 @@ jobs:
           script: |
             set -euxo pipefail
             cd "${{ secrets.DEV_DEPLOY_PATH }}"
-            git fetch --tags origin
-            git checkout "${{ github.ref_name }}"
+            git fetch origin
+            git checkout dev
+            git pull --ff-only origin dev
+            export VIDEOSCRIBER_TAG=dev
             docker compose pull
             docker compose up -d
             docker compose ps
-
-  build-desktop:
-    name: Build Mac Desktop App
-    runs-on: macos-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: desktop/package-lock.json
-
-      - name: Install ffmpeg
-        run: brew install ffmpeg
-
-      - name: Bundle Python environment
-        run: bash desktop/scripts/bundle-python.sh
-
-      - name: Install Electron deps
-        working-directory: desktop
-        run: npm install
-
-      - name: Build .dmg
-        working-directory: desktop
-        run: npm run make
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: videoscriber-mac
-          path: desktop/out/make/**/*
-          retention-days: 30
