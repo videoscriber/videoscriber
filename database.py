@@ -287,10 +287,26 @@ async def try_create_transcription_atomic(
             raise
 
 
+def _is_playable_mp4(path) -> bool:
+    """Cheap sanity check — ffprobe returns non-zero for truncated/partial mp4s
+    (e.g. ffmpeg's enhance step was interrupted and never wrote the moov atom)."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", str(path)],
+            capture_output=True, timeout=10,
+        )
+        return result.returncode == 0 and bool(result.stdout.strip())
+    except Exception:
+        return False
+
+
 async def recover_orphaned_video_paths(upload_dir: str) -> int:
     """Heal transcriptions that finished (status='done') but whose post-processing
-    was interrupted: the enhanced video file sits on disk, but video_path in the
-    DB is NULL. Returns how many rows were repaired."""
+    was interrupted: the video file may sit on disk but video_path in the DB is
+    NULL. Validates candidate files with ffprobe because a partially-written
+    enhanced file is corrupt and unplayable. Returns how many rows were repaired."""
     import pathlib
     up = pathlib.Path(upload_dir)
     if not up.exists():
@@ -306,17 +322,27 @@ async def recover_orphaned_video_paths(upload_dir: str) -> int:
             jid = row["id"]
             enhanced = up / f"{jid}_enhanced.mp4"
             original = up / f"{jid}.mp4"
-            if enhanced.exists():
-                path = str(enhanced)
-                status = "ok"
-            elif original.exists():
-                path = str(original)
-                status = "skipped"
+            chosen_path = None
+            chosen_status = None
+            if enhanced.exists() and _is_playable_mp4(enhanced):
+                chosen_path, chosen_status = str(enhanced), "ok"
+                # Enhanced replaces original when healthy — delete the leftover
+                if original.exists():
+                    try: original.unlink()
+                    except Exception: pass
             else:
+                # Enhanced is missing or corrupt. Prefer the original; drop the
+                # bad enhanced file so next sweep doesn't trip over it again.
+                if enhanced.exists():
+                    try: enhanced.unlink()
+                    except Exception: pass
+                if original.exists() and _is_playable_mp4(original):
+                    chosen_path, chosen_status = str(original), "skipped"
+            if not chosen_path:
                 continue
             await db.execute(
                 "UPDATE transcriptions SET video_path = ?, enhancement_status = COALESCE(enhancement_status, ?) WHERE id = ?",
-                (path, status, jid),
+                (chosen_path, chosen_status, jid),
             )
             repaired += 1
         if repaired:
