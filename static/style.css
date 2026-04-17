@@ -214,6 +214,9 @@ input, textarea, button, select { font-family: inherit; font-size: inherit; }
   display: flex;
   align-items: center;
   justify-content: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
   color: var(--text-secondary);
   transition: background var(--fast), color var(--fast), border-color var(--fast);

@@ -3,22 +3,18 @@ import { showToast } from './toast.js';
 const dropZone = document.getElementById('drop-zone');
 const fileInput = document.getElementById('file-input');
 const uploadQueue = document.getElementById('upload-queue');
-const diarizeOption = document.getElementById('diarize-option');
-const diarizeCheckbox = document.getElementById('diarize-checkbox');
 
 let onUploadComplete = null;
+// Diarization runs automatically whenever the server has it configured.
+let diarizationAvailable = false;
 
 export async function initUpload(callbacks) {
   onUploadComplete = callbacks.onComplete;
 
-  // Check if diarization is available
   try {
     const res = await fetch('/api/config');
     const config = await res.json();
-    if (config.diarization_available) {
-      diarizeOption.hidden = false;
-      diarizeCheckbox.checked = true;
-    }
+    diarizationAvailable = !!config.diarization_available;
   } catch (e) {
     console.warn('Config check failed:', e);
   }
@@ -98,7 +94,7 @@ function uploadSingleFile(file) {
 
   const formData = new FormData();
   formData.append('files', file);
-  if (diarizeCheckbox && diarizeCheckbox.checked) {
+  if (diarizationAvailable) {
     formData.append('diarize', 'true');
   }
 

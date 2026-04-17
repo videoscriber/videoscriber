@@ -572,11 +572,33 @@ function initShortcuts() {
 
     if (e.key === '?' || (e.shiftKey && e.key === '/')) { shortcutsModal.hidden = !shortcutsModal.hidden; return; }
     if (e.key === 'd' || e.key === 'D') { toggleTheme(); return; }
-    if (e.key === 'c') { btnCopy.click(); return; }
-    if (e.key === '1') { setFormat(0); return; }
-    if (e.key === '2') { setFormat(1); return; }
-    if (e.key === '3') { setFormat(2); return; }
-    if (e.key === '4') { setFormat(3); return; }
+    if (e.key === 'c' || e.key === 'C') {
+      // Copy only makes sense when viewing a transcript
+      if (!btnCopy.disabled) btnCopy.click();
+      return;
+    }
+    if (e.key === 'u' || e.key === 'U') {
+      // Upload — open the hidden file picker
+      const fi = document.getElementById('file-input');
+      if (fi) fi.click();
+      return;
+    }
+    if (e.key === 'a' || e.key === 'A') {
+      // AI Assistant — click the topbar button (handles free/plus gating)
+      const ab = document.getElementById('assistant-btn');
+      if (ab) ab.click();
+      return;
+    }
+    if (mod && e.key === 'f') {
+      // Find in transcript — focus the in-transcript search if visible
+      const s = document.getElementById('transcript-search-input');
+      if (s && !s.closest('.transcript-search').hidden) {
+        e.preventDefault();
+        s.focus();
+        s.select();
+        return;
+      }
+    }
 
     if (e.key === 'j' || e.key === 'k') {
       e.preventDefault();
