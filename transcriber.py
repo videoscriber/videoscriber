@@ -1,3 +1,21 @@
+"""Transcription pipeline.
+
+File lifecycle (see app._cleanup_orphans for the startup sweep):
+
+  uploads/{job_id}{ext}            original upload — kept until the job is
+                                    deleted via the API, or replaced by an
+                                    enhanced copy on successful post-process
+  uploads/{job_id}_preview{ext}    preview-video uploaded separately after
+                                    transcription completes
+  uploads/{job_id}_enhanced.mp4    produced by enhance_video(); becomes the
+                                    new video_path and the original is unlinked
+  audio/{job_id}.mp3               transient — deleted in the finally block
+  audio/{job_id}_chunk_NNN.mp3     transient — deleted in the finally block
+
+On error the original video is kept and video_path is re-set so /retry works.
+On KEEP_VIDEO_FOR_PREVIEW=false the original is removed at the end of post_process.
+"""
+
 import asyncio
 import json
 import logging
@@ -369,7 +387,6 @@ async def process_transcription(job_id: str, video_path: Path, audio_dir: Path, 
 
     client = AsyncOpenAI()
     audio_path = audio_dir / f"{job_id}.mp3"
-    success = False
 
     try:
         # Stage 1: Extract audio
@@ -445,7 +462,6 @@ async def process_transcription(job_id: str, video_path: Path, audio_dir: Path, 
             transcript_segments_json=segments_json,
             completed_at=datetime.now(timezone.utc).isoformat(),
         )
-        success = True
 
         # Stage 5: Post-process (speaker names + recap + video enhance) — all in parallel, non-fatal
         await post_process(job_id, all_segments, plain_text, video_path=video_path)
@@ -463,9 +479,9 @@ async def process_transcription(job_id: str, video_path: Path, audio_dir: Path, 
         audio_path.unlink(missing_ok=True)
         for chunk in audio_dir.glob(f"{job_id}_chunk_*.mp3"):
             chunk.unlink(missing_ok=True)
-        # Video cleanup handled by post_process; on error keep for retry
-        if not success and video_path.exists():
-            pass  # kept for retry — video_path stored in error handler
+        # On success, post_process owns the video (moves/removes as needed).
+        # On error, the original video stays and video_path was set in the
+        # except block above, so /api/transcriptions/{id}/retry can find it.
 
 
 async def process_transcription_assemblyai(
@@ -475,7 +491,6 @@ async def process_transcription_assemblyai(
 
     aai.settings.api_key = api_key
     audio_path = audio_dir / f"{job_id}.mp3"
-    success = False
 
     try:
         # Stage 1: Extract audio
@@ -553,7 +568,6 @@ async def process_transcription_assemblyai(
             transcript_segments_json=segments_json,
             completed_at=datetime.now(timezone.utc).isoformat(),
         )
-        success = True
 
         # Stage 5: Post-process (speaker names + recap + video enhance) — all in parallel
         await post_process(job_id, all_segments, plain_text, video_path=video_path)
@@ -571,5 +585,4 @@ async def process_transcription_assemblyai(
         audio_path.unlink(missing_ok=True)
         for chunk in audio_dir.glob(f"{job_id}_chunk_*.mp3"):
             chunk.unlink(missing_ok=True)
-        if not success and video_path.exists():
-            pass  # kept for retry
+        # Same lifecycle as the Whisper path above.

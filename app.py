@@ -80,8 +80,82 @@ async def lifespan(app: FastAPI):
     AUDIO_DIR.mkdir(exist_ok=True)
 
     await db.init_db()
+    await _cleanup_orphans()
     logger.info("Videoscriber ready at http://%s:%s", HOST, PORT)
     yield
+
+
+def _upload_job_id(path: Path) -> str:
+    """Derive the job_id prefix from an upload filename.
+
+    Upload files follow three naming conventions, all rooted at a UUID job id:
+      - {job_id}{ext}           — original uploaded video
+      - {job_id}_preview{ext}   — preview-video uploaded separately
+      - {job_id}_enhanced.mp4   — output of ffmpeg post-processing
+    """
+    stem = path.stem
+    if stem.endswith("_preview"):
+        return stem[: -len("_preview")]
+    if stem.endswith("_enhanced"):
+        return stem[: -len("_enhanced")]
+    return stem
+
+
+async def _cleanup_orphans() -> None:
+    """On startup, prune stale files in uploads/ and audio/.
+
+    Safe to run because init_db() has already flipped any in-flight jobs
+    (status in pending/extracting/transcribing) to 'error'. That means no
+    active worker owns files in these directories — anything still on disk
+    is either tied to a persisted row, or is a leak from a previous crash.
+
+    Audio: *.mp3 is purely a transcription scratchpad. Nothing references
+    these across a restart, so every file is removable.
+
+    Uploads: keep files whose job_id prefix matches a live DB row. Also
+    re-associate orphaned originals with rows that were interrupted but
+    have no video_path set, so retry remains possible.
+    """
+    records = await db.list_transcriptions()
+    by_id = {r["id"]: r for r in records}
+
+    audio_removed = 0
+    for p in AUDIO_DIR.glob("*.mp3"):
+        try:
+            p.unlink()
+            audio_removed += 1
+        except OSError as e:
+            logger.warning("Could not remove stale audio %s: %s", p, e)
+
+    upload_removed = 0
+    repaired = 0
+    for p in UPLOAD_DIR.iterdir():
+        if not p.is_file():
+            continue
+        job_id = _upload_job_id(p)
+        record = by_id.get(job_id)
+        if record is None:
+            try:
+                p.unlink()
+                upload_removed += 1
+            except OSError as e:
+                logger.warning("Could not remove orphan upload %s: %s", p, e)
+            continue
+        # Re-associate: row is in 'error' with no video_path but the original
+        # upload still exists on disk. Reattach so retry can find it.
+        if (
+            record.get("status") == "error"
+            and not record.get("video_path")
+            and not p.name.endswith(("_preview" + p.suffix, "_enhanced.mp4"))
+        ):
+            await db.update_transcription(job_id, video_path=str(p))
+            repaired += 1
+
+    if audio_removed or upload_removed or repaired:
+        logger.info(
+            "Startup cleanup: removed %d audio file(s), %d orphan upload(s); reattached %d interrupted job(s)",
+            audio_removed, upload_removed, repaired,
+        )
 
 
 app = FastAPI(lifespan=lifespan)
