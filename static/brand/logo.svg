@@ -11,25 +11,23 @@
     </linearGradient>
     <!-- Shared word + wave gradient: vertical white -> lavender, anchored in user-space
          so the waveform bars read as one unified gradient rather than each fading independently. -->
+    <!-- Theme-agnostic gradient for the icon's caption lines (stays inside the
+         dark camera rect, so the white endpoint is fine here). -->
     <linearGradient id="wordGrad" x1="0" y1="14" x2="0" y2="58" gradientUnits="userSpaceOnUse">
       <stop offset="0%" stop-color="#ffffff" />
-      <stop offset="100%" stop-color="#a78bfa" />
+      <stop offset="100%" stop-color="#ddd6fe" />
     </linearGradient>
-    <!-- Same gradient but spanning the wordmark's vertical range, so the text fades
-         across its full height not just the x-height. -->
+    <!-- Wordmark gradient stays inside the purple range so it reads on BOTH
+         light and dark page backgrounds. -->
     <linearGradient id="wordGradText" x1="0" y1="12" x2="0" y2="58" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#ffffff" />
-      <stop offset="100%" stop-color="#a78bfa" />
+      <stop offset="0%" stop-color="#8b5cf6" />
+      <stop offset="100%" stop-color="#c4b5fd" />
     </linearGradient>
-    <filter id="dGlow">
-      <feGaussianBlur stdDeviation="1.5" result="b"/>
-      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
   </defs>
 
   <!-- Icon: 44x44, nudged ~2px below geometric center for optical alignment with text x-height. -->
   <g transform="translate(30, 39)">
-    <rect x="-21" y="-22" width="44" height="44" rx="10" ry="10" fill="url(#dCam)" filter="url(#dGlow)" />
+    <rect x="-21" y="-22" width="44" height="44" rx="10" ry="10" fill="url(#dCam)" />
     <path d="M 20,-13 L 31,-19 Q 34,-20.4 34,-17 L 34,17 Q 34,20.4 31,19 L 20,13 Z" fill="url(#dLens)" />
     <!-- Three horizontal "caption" bars of varying widths — simpler than a waveform, -->
     <!-- evokes text lines / transcription. Single shared white->lavender gradient.   -->

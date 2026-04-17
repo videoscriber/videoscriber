@@ -286,6 +286,40 @@ async def health():
     return {"ok": True}
 
 
+@app.get("/robots.txt")
+async def robots_txt():
+    body = (
+        "User-agent: *\n"
+        "Allow: /\n"
+        "Disallow: /app\n"
+        "Disallow: /app/\n"
+        "Disallow: /api/\n"
+        "Disallow: /auth/\n"
+        "Disallow: /signup/profile\n"
+        "Sitemap: https://videoscriber.ai/sitemap.xml\n"
+    )
+    return PlainTextResponse(body, media_type="text/plain")
+
+
+@app.get("/sitemap.xml")
+async def sitemap_xml():
+    urls = ["/", "/signup", "/login", "/terms", "/privacy", "/upgrade"]
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    entries = "".join(
+        f"  <url><loc>https://videoscriber.ai{u}</loc><lastmod>{now}</lastmod>"
+        f"<changefreq>{'weekly' if u == '/' else 'monthly'}</changefreq>"
+        f"<priority>{'1.0' if u == '/' else '0.6'}</priority></url>\n"
+        for u in urls
+    )
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        f"{entries}"
+        "</urlset>\n"
+    )
+    return Response(content=body, media_type="application/xml")
+
+
 @app.get("/api/config")
 async def get_config(user: dict = Depends(auth.require_user)):
     plan = user.get("plan") or "free"

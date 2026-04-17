@@ -1,5 +1,7 @@
 {% extends "_public_base.html" %}
-{% block title %}{% if mode == 'signup' %}Sign up{% else %}Log in{% endif %} — Videoscriber{% endblock %}
+{% block title %}{% if mode == 'signup' %}Create your Videoscriber account{% else %}Log in to Videoscriber{% endif %}{% endblock %}
+{% block meta_description %}{% if mode == 'signup' %}Create a Videoscriber account in seconds. Free to start — 3 transcriptions per month, cloud backup, and AI-drafted recaps ready to send.{% else %}Sign in to Videoscriber to access your transcripts, recap drafts, and AI assistant.{% endif %}{% endblock %}
+{% block meta_robots %}noindex, follow{% endblock %}
 {% block nav %}
     {% if mode == 'signup' %}
     <a href="/login" class="nav-link">Log in</a>

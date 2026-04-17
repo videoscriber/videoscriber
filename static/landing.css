@@ -914,3 +914,94 @@
     .reveal { opacity: 1 !important; transform: none !important; }
     .btn-glow::before { display: none; }
 }
+
+/* ============================================================================
+   LIGHT MODE OVERRIDES
+   ============================================================================ */
+[data-theme="light"] .landing {
+    --glass-bg: rgba(15, 15, 30, 0.025);
+    --glass-bg-strong: rgba(15, 15, 30, 0.05);
+    --glass-border: rgba(15, 15, 30, 0.08);
+    --glass-border-hover: rgba(139, 92, 246, 0.4);
+}
+
+/* Gradient text: swap white→lavender (dark mode) for dark-purple→mid-violet (light mode) */
+[data-theme="light"] .section-title .grad,
+[data-theme="light"] .hero-title .grad,
+[data-theme="light"] .stat-value {
+    background: linear-gradient(180deg, #4c1d95 0%, #8b5cf6 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+[data-theme="light"] .final-cta h2 span {
+    background: linear-gradient(180deg, #4c1d95 0%, #8b5cf6 100%) !important;
+    -webkit-background-clip: text !important;
+    background-clip: text !important;
+    color: transparent !important;
+}
+
+/* Soften the atmospheric orbs so they don't wash out light bg */
+[data-theme="light"] .landing::before,
+[data-theme="light"] .landing::after,
+[data-theme="light"] .ambient { opacity: 0.55; }
+
+/* Feature-card cursor glow reads better with a darker tint on light bg */
+[data-theme="light"] .feature-card::before {
+    background: radial-gradient(
+        400px circle at var(--mx, 50%) var(--my, 50%),
+        rgba(139, 92, 246, 0.12),
+        transparent 40%
+    );
+}
+
+/* Mockup chrome — slight adjustment for readability on light bg */
+[data-theme="light"] .mockup {
+    background: rgba(255, 255, 255, 0.65);
+    box-shadow:
+        0 30px 60px -20px rgba(15, 15, 30, 0.25),
+        0 0 0 1px rgba(15, 15, 30, 0.06) inset,
+        0 0 80px -10px var(--purple-glow-soft);
+}
+[data-theme="light"] .mockup-wave {
+    background: rgba(15, 15, 30, 0.04);
+    border-color: rgba(15, 15, 30, 0.06);
+}
+[data-theme="light"] .code-block {
+    background: rgba(15, 15, 30, 0.04);
+    color: #2a2a35;
+}
+
+/* Stat grid on light: glass reads better with lower white opacity */
+[data-theme="light"] .stat {
+    background: rgba(255, 255, 255, 0.7);
+}
+
+/* FAQ accordions + audience panels on light */
+[data-theme="light"] .faq-item,
+[data-theme="light"] .audience-panel,
+[data-theme="light"] .step,
+[data-theme="light"] .feature-card,
+[data-theme="light"] .use-case {
+    background: rgba(255, 255, 255, 0.6);
+}
+[data-theme="light"] .audience-panel.ent {
+    background: linear-gradient(180deg, rgba(167, 139, 250, 0.08), rgba(255, 255, 255, 0.6));
+}
+[data-theme="light"] .audience-panel.dev {
+    background: linear-gradient(180deg, rgba(110, 231, 183, 0.05), rgba(255, 255, 255, 0.6));
+}
+
+/* Final CTA panel glows */
+[data-theme="light"] .final-cta {
+    background: rgba(255, 255, 255, 0.6);
+}
+
+/* Hero chip on light: use dark-tint backdrop */
+[data-theme="light"] .hero-chip {
+    background: rgba(15, 15, 30, 0.04);
+    color: var(--text);
+}
+
+/* Scroll cue visibility on light */
+[data-theme="light"] .hero-scroll { color: var(--text-secondary); }

@@ -1,6 +1,45 @@
 {% extends "_public_base.html" %}
 {% block title %}Videoscriber — AI transcription agents that always follow up{% endblock %}
+{% block meta_description %}Videoscriber is the AI meeting assistant for people who hate taking notes. Turn any recording into a transcript, draft a recap email, and send the follow-up — all in under a minute. Free to start, open-source desktop app available.{% endblock %}
 {% block extra_css %}<link rel="stylesheet" href="/static/landing.css">{% endblock %}
+{% block extra_head %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Videoscriber",
+  "applicationCategory": "BusinessApplication",
+  "operatingSystem": "Web, macOS, Windows, Linux",
+  "description": "Videoscriber turns any meeting recording into a transcript, drafts the recap email, and keeps every attendee aligned on next steps.",
+  "url": "https://videoscriber.ai/",
+  "image": "https://videoscriber.ai/static/brand/og-image.png",
+  "publisher": {
+    "@type": "Organization",
+    "name": "Videoscriber LLC",
+    "url": "https://videoscriber.ai/",
+    "logo": {
+      "@type": "ImageObject",
+      "url": "https://videoscriber.ai/static/brand/icon.svg"
+    }
+  },
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD",
+    "availability": "https://schema.org/InStock",
+    "description": "Free tier with 3 transcriptions per month. Plus tier available via pay-per-token AI credits."
+  },
+  "featureList": [
+    "High-accuracy automated transcription",
+    "Speaker diarization",
+    "AI-drafted recap emails",
+    "One-click follow-up delivery",
+    "Open-source desktop application",
+    "Per-video AI assistant chat"
+  ]
+}
+</script>
+{% endblock %}
 {% block content %}
 <div class="landing">
     <div class="ambient ambient-3" aria-hidden="true"></div>
