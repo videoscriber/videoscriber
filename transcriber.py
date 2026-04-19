@@ -95,7 +95,7 @@ async def enhance_video(input_path: Path, output_path: Path) -> tuple[bool, str 
             "-c:a", "aac", "-b:a", "128k",
             "-movflags", "+faststart",
             "-pix_fmt", "yuv420p",
-            str(tmp_path), "-y",
+            "-f", "mp4", str(tmp_path), "-y",
         ])
         rc, stderr = rc_hw, stderr_hw
 
@@ -111,7 +111,7 @@ async def enhance_video(input_path: Path, output_path: Path) -> tuple[bool, str 
                 "-c:a", "aac", "-b:a", "128k",
                 "-movflags", "+faststart",
                 "-pix_fmt", "yuv420p",
-                str(tmp_path), "-y",
+                "-f", "mp4", str(tmp_path), "-y",
             ])
             rc, stderr = rc_sw, stderr_sw
 
