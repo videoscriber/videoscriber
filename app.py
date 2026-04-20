@@ -969,12 +969,19 @@ async def delete_video(job_id: str, user: dict = Depends(auth.require_user)):
 
 
 @app.post("/api/transcriptions/{job_id}/recap")
-async def get_or_generate_recap(job_id: str, regenerate: bool = False, user: dict = Depends(auth.require_user)):
+async def get_or_generate_recap(
+    job_id: str,
+    regenerate: bool = False,
+    guidance: str = Form(default=""),
+    user: dict = Depends(auth.require_user),
+):
     record = _require_owner(await db.get_transcription(job_id), user)
     if record["status"] != "done":
         raise HTTPException(400, "Transcription not complete")
 
-    if record.get("recap") and not regenerate:
+    # Regenerate with user guidance always bypasses the cache.
+    guidance = (guidance or "").strip()
+    if record.get("recap") and not regenerate and not guidance:
         return {"recap": record["recap"]}
 
     from transcriber import generate_recap as gen_recap
@@ -983,7 +990,7 @@ async def get_or_generate_recap(job_id: str, regenerate: bool = False, user: dic
 
     transcript = record["transcript_text"] or ""
     try:
-        recap = await gen_recap(transcript, client)
+        recap = await gen_recap(transcript, client, guidance=guidance or None)
     except Exception as e:
         logger.warning("On-demand recap failed for %s: %s", job_id, e)
         await db.update_transcription(job_id, recap_status="failed")

@@ -349,11 +349,29 @@ async def identify_speaker_names(segments: list[dict], client: AsyncOpenAI) -> l
 # Auto recap generation
 # ============================================================
 
-async def generate_recap(plain_text: str, client: AsyncOpenAI) -> str:
-    """Generate a meeting recap email from transcript text. Raises on API failure."""
+async def generate_recap(plain_text: str, client: AsyncOpenAI, guidance: str | None = None) -> str:
+    """Generate a meeting recap email from transcript text. Raises on API failure.
+
+    `guidance` is optional free-form instruction from the user (e.g. "make it
+    shorter", "address it to Pete", "focus on action items") that is layered on
+    top of the default system prompt when the user regenerates the recap.
+    """
     transcript = plain_text
     if len(transcript) > 60000:
         transcript = transcript[:60000] + "\n\n[...transcript truncated for length]"
+
+    guidance = (guidance or "").strip()
+    user_content = f"Here is the transcript:\n\n{transcript}"
+    if guidance:
+        # Hard-cap to avoid accidental prompt bloat from pasted content.
+        if len(guidance) > 2000:
+            guidance = guidance[:2000]
+        user_content = (
+            f"Additional instructions from the user for this regeneration "
+            f"(follow these carefully, but do not violate the quality rules "
+            f"in the system message):\n{guidance}\n\n"
+            f"Here is the transcript:\n\n{transcript}"
+        )
 
     response = await client.chat.completions.create(
         model=RECAP_MODEL,
@@ -397,7 +415,7 @@ async def generate_recap(plain_text: str, client: AsyncOpenAI) -> str:
             },
             {
                 "role": "user",
-                "content": f"Here is the transcript:\n\n{transcript}",
+                "content": user_content,
             },
         ],
     )

@@ -40,6 +40,10 @@ const recapSubject = document.getElementById('recap-subject');
 const recapCopy = document.getElementById('recap-copy');
 const recapSend = document.getElementById('recap-send');
 const recapRegenerate = document.getElementById('recap-regenerate');
+const recapGuidancePanel = document.getElementById('recap-guidance-panel');
+const recapGuidance = document.getElementById('recap-guidance');
+const recapGuidanceCancel = document.getElementById('recap-guidance-cancel');
+const recapGuidanceSubmit = document.getElementById('recap-guidance-submit');
 const btnRename = document.getElementById('btn-rename');
 const renameInput = document.getElementById('rename-input');
 
@@ -849,16 +853,37 @@ function initRecap() {
     setTimeout(() => { recapCopy.textContent = orig; }, 1500);
   });
 
-  recapRegenerate.addEventListener('click', () => generateRecap(true));
+  recapRegenerate.addEventListener('click', () => openGuidancePanel());
+  recapGuidanceCancel.addEventListener('click', () => closeGuidancePanel());
+  recapGuidanceSubmit.addEventListener('click', () => {
+    const guidance = recapGuidance.value.trim();
+    closeGuidancePanel();
+    generateRecap(true, guidance);
+  });
 
   recapSend.addEventListener('click', sendRecapEmail);
 
   window._openRecap = generateRecap;
 }
 
-async function generateRecap(regenerate = false) {
+function openGuidancePanel() {
+  recapEditor.hidden = true;
+  recapActions.hidden = true;
+  recapGuidancePanel.hidden = false;
+  recapGuidance.value = '';
+  recapGuidance.focus();
+}
+
+function closeGuidancePanel() {
+  recapGuidancePanel.hidden = true;
+  recapEditor.hidden = false;
+  recapActions.hidden = false;
+}
+
+async function generateRecap(regenerate = false, guidance = '') {
   if (!activeJobId) return;
   openRecapModal();
+  recapGuidancePanel.hidden = true;
 
   // Fast path: the recap was pre-generated during post-processing. Open the
   // editor immediately so the user sees real content, not a spinner.
@@ -873,10 +898,12 @@ async function generateRecap(regenerate = false) {
 
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
+    const timeout = setTimeout(() => controller.abort(), 45000);
 
     const url = `/api/transcriptions/${activeJobId}/recap${regenerate ? '?regenerate=true' : ''}`;
-    const res = await fetch(url, { method: 'POST', signal: controller.signal });
+    const body = new FormData();
+    if (guidance) body.append('guidance', guidance);
+    const res = await fetch(url, { method: 'POST', body, signal: controller.signal });
     clearTimeout(timeout);
 
     const data = await res.json();

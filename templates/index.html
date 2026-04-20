@@ -285,6 +285,14 @@
                     </div>
                     <textarea id="recap-content" class="recap-textarea"></textarea>
                 </div>
+                <div id="recap-guidance-panel" class="recap-guidance-panel" hidden>
+                    <label for="recap-guidance">How should we rewrite it? <span class="recap-guidance-hint">(optional)</span></label>
+                    <textarea id="recap-guidance" rows="3" placeholder="e.g. Make it shorter and more casual. Focus on next steps. Address it to Sam."></textarea>
+                    <div class="recap-guidance-actions">
+                        <button type="button" id="recap-guidance-cancel" class="btn-ghost">Cancel</button>
+                        <button type="button" id="recap-guidance-submit" class="btn-primary">Regenerate</button>
+                    </div>
+                </div>
             </div>
             <div class="recap-actions" id="recap-actions" hidden>
                 <button id="recap-regenerate" class="btn-secondary">Regenerate</button>
