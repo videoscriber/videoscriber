@@ -207,10 +207,23 @@
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                             <span>Copy</span>
                         </button>
-                        <button id="btn-download" class="btn-secondary" disabled>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                            <span>Download</span>
-                        </button>
+                        <div class="download-menu" id="download-menu">
+                            <button id="btn-download" class="btn-secondary" aria-haspopup="menu" aria-expanded="false" disabled>
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                <span>Download</span>
+                                <svg class="chev" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                            <div id="download-menu-dropdown" class="download-dropdown" role="menu" hidden>
+                                <button type="button" class="download-option" data-format="pdf" role="menuitem">
+                                    <span class="download-option-title">PDF</span>
+                                    <span class="download-option-sub">Styled cover, summary, and full transcript</span>
+                                </button>
+                                <button type="button" class="download-option" data-format="md" role="menuitem">
+                                    <span class="download-option-title">Markdown</span>
+                                    <span class="download-option-sub">Portable .md for Notion, Obsidian, GitHub</span>
+                                </button>
+                            </div>
+                        </div>
                         <button id="btn-recap" class="btn-primary" disabled>
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
                             <span>Recap Email</span>

@@ -342,6 +342,27 @@
   display: flex; gap: 0.5rem; justify-content: flex-end;
 }
 
+/* Download format dropdown */
+.download-menu { position: relative; }
+.download-menu .chev { margin-left: 0.15rem; opacity: 0.75; }
+.download-dropdown {
+  position: absolute; top: calc(100% + 0.35rem); right: 0;
+  min-width: 240px; z-index: 20;
+  background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+  padding: 0.3rem; display: flex; flex-direction: column; gap: 0.15rem;
+}
+.download-option {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 0.15rem;
+  width: 100%; padding: 0.55rem 0.7rem; border-radius: calc(var(--radius) - 2px);
+  background: transparent; border: none; cursor: pointer;
+  text-align: left; color: var(--text);
+}
+.download-option:hover,
+.download-option:focus-visible { background: var(--surface-2); outline: none; }
+.download-option-title { font-size: 0.85rem; font-weight: 600; }
+.download-option-sub { font-size: 0.72rem; color: var(--text-muted); line-height: 1.35; }
+
 /* ============================================
    USER MENU (topbar dropdown)
    ============================================ */
