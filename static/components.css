@@ -991,6 +991,131 @@
 }
 
 /* ============================================
+   INTEGRATIONS PANEL (Settings → Integrations)
+   ============================================ */
+.integrations-loading {
+    padding: 14px 0;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+.integrations-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 8px;
+}
+.integration-row {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 16px 18px;
+    background: var(--surface-1);
+    transition: border-color var(--fast) var(--ease);
+}
+.integration-row:hover { border-color: var(--border-hover); }
+.integration-row-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+.integration-row-meta {
+    flex: 1; min-width: 0;
+    display: flex; flex-direction: column; gap: 4px;
+}
+.integration-row-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+}
+.integration-row-desc {
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.45;
+}
+.integration-row-account {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+.integration-row-actions {
+    display: flex; gap: 8px;
+    flex-shrink: 0;
+}
+.integration-row-actions .btn,
+.integration-row-actions .btn-primary {
+    font-size: 13px;
+    padding: 7px 14px;
+}
+.integration-soon {
+    font-size: 12px;
+    color: var(--text-muted);
+    padding: 7px 10px;
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+}
+.integration-row-mode {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+.integration-row-mode label { flex-shrink: 0; }
+.integration-row-mode select {
+    background: var(--surface-0);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    cursor: pointer;
+}
+.integration-row-mode select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-dim);
+}
+.integration-chip {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 999px;
+}
+.integration-chip.chip-ok {
+    background: rgba(52, 211, 153, 0.12);
+    border: 1px solid rgba(52, 211, 153, 0.28);
+    color: #34d399;
+}
+.btn-danger-sm {
+    background: transparent;
+    color: var(--error, #f87171);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background var(--fast), border-color var(--fast);
+}
+.btn-danger-sm:hover {
+    background: rgba(248, 113, 113, 0.08);
+    border-color: rgba(248, 113, 113, 0.4);
+}
+/* Narrow screens: stack actions below the meta so Connect isn't squeezed. */
+@media (max-width: 520px) {
+    .integration-row-head { flex-direction: column; align-items: stretch; }
+    .integration-row-actions { justify-content: flex-end; }
+    .integration-row-mode { flex-wrap: wrap; }
+}
+
+/* ============================================
    RESPONSIVE — modals, drawers, dropdowns, settings
    ============================================ */
 @media (max-width: 640px) {
