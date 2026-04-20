@@ -30,13 +30,12 @@
   /* --- Cover block -------------------------------------------------------- */
   .cover { margin-bottom: 0.3in; padding-bottom: 0.2in; border-bottom: 1pt solid #e6e6ee; }
   .brand {
-    display: flex; align-items: center; gap: 0.12in;
-    font-size: 10pt; font-weight: 600; color: #8b5cf6;
-    letter-spacing: 0.04em; text-transform: uppercase;
-    margin-bottom: 0.22in;
+    display: flex; align-items: center;
+    margin-bottom: 0.24in;
   }
-  .brand-dot { width: 0.08in; height: 0.08in; border-radius: 50%;
-               background: linear-gradient(135deg, #a78bfa, #6366f1); }
+  .brand img {
+    height: 0.36in; width: auto; display: block;
+  }
 
   h1.title {
     font-size: 22pt; font-weight: 700; letter-spacing: -0.015em;
@@ -113,8 +112,7 @@
 
 <div class="cover">
   <div class="brand">
-    <span class="brand-dot"></span>
-    Videoscriber
+    <img src="static/brand/logo-1200.png" alt="Videoscriber">
   </div>
   <h1 class="title">{{ filename }}</h1>
   <div class="meta">
