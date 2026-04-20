@@ -104,8 +104,19 @@
         </div>
     </div>
 
+    <!-- Mobile-only backdrop: dimmed layer behind the slide-in sidebar; taps close it. -->
+    <div class="sidebar-backdrop" id="sidebar-backdrop" aria-hidden="true"></div>
+
     <!-- Sidebar -->
     <aside class="sidebar" id="sidebar">
+        <!-- Mobile-only brand at the top of the drawer; hidden on desktop
+             because the topbar already shows it. Freeing the topbar here
+             gives the search input meaningful width on phones. -->
+        <div class="sidebar-brand">
+            <a href="/app" class="brand" aria-label="Videoscriber home">
+                <img src="/static/brand/logo.svg?v=5" alt="Videoscriber" class="brand-logo-app">
+            </a>
+        </div>
         <section class="sidebar-upload">
             <div id="drop-zone" tabindex="0" role="button" aria-label="Upload video files">
                 <div class="drop-zone-inner">
@@ -277,6 +288,24 @@
             </div>
         </div>
     </main>
+
+    <!-- Rename Modal (used on mobile for both the title and sidebar list items) -->
+    <div id="rename-modal" class="modal-overlay" hidden>
+        <div class="modal-dialog rename-dialog">
+            <div class="modal-header">
+                <h3>Rename transcript</h3>
+                <button class="modal-close" aria-label="Close">&times;</button>
+            </div>
+            <div class="rename-body">
+                <label for="rename-modal-input" class="rename-label">Name</label>
+                <input type="text" id="rename-modal-input" autocomplete="off" autocapitalize="sentences" spellcheck="false">
+            </div>
+            <div class="rename-actions">
+                <button type="button" class="btn-ghost" id="rename-modal-cancel">Cancel</button>
+                <button type="button" class="btn-primary" id="rename-modal-save">Save</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Recap Email Modal -->
     <div id="recap-modal" class="modal-overlay" hidden>
