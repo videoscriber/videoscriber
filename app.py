@@ -28,6 +28,7 @@ from starlette.requests import Request  # noqa: E402
 
 import auth  # noqa: E402
 import auth_routes  # noqa: E402
+import billing_routes  # noqa: E402
 import chat_routes  # noqa: E402
 import database as db  # noqa: E402
 import domain_routes  # noqa: E402
@@ -284,15 +285,21 @@ templates = Jinja2Templates(directory="templates")
 # traffic-light overlap and mark header regions as draggable.
 templates.env.globals["desktop_mode"] = DESKTOP_MODE
 app.include_router(auth_routes.router)
+app.include_router(billing_routes.router)
 app.include_router(chat_routes.router)
 app.include_router(domain_routes.router)
 
 
 @app.middleware("http")
 async def gate_api_behind_session(request: Request, call_next):
-    """Require a valid session for /api/* routes. /api/sync/* uses its own key auth."""
+    """Require a valid session for /api/* routes. /api/sync/* uses its own key auth;
+    /api/billing/webhook is Stripe → us and authenticates via signature verification."""
     path = request.url.path
-    if path.startswith("/api/") and not path.startswith("/api/sync"):
+    if (
+        path.startswith("/api/")
+        and not path.startswith("/api/sync")
+        and path != "/api/billing/webhook"
+    ):
         user = await auth.current_user(request)
         if not user:
             return JSONResponse({"error": "Authentication required"}, status_code=401)
@@ -348,6 +355,12 @@ async def upgrade_page(request: Request):
         return RedirectResponse("/login", status_code=303)
     plan = user.get("plan") or "free"
     limits = _plan_limits(plan)
+    status_flag = request.query_params.get("status") or ""
+    billing_configured = bool(
+        os.getenv("STRIPE_SECRET_KEY")
+        and os.getenv("STRIPE_PRICE_MONTHLY")
+        and os.getenv("STRIPE_PRICE_ANNUAL")
+    )
     return templates.TemplateResponse(request, "upgrade.html", {
         "user": user,
         "plan": plan,
@@ -355,6 +368,8 @@ async def upgrade_page(request: Request):
         "free_max_file_mb": FREE_MAX_FILE_MB,
         "plus_max_file_mb": PLUS_MAX_FILE_MB,
         "free_monthly_limit": FREE_MONTHLY_LIMIT,
+        "billing_configured": billing_configured,
+        "status_flag": status_flag,
     })
 
 
