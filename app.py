@@ -261,10 +261,12 @@ async def _cleanup_orphans() -> None:
             except OSError as e:
                 logger.warning("Could not remove orphan upload %s: %s", p, e)
             continue
-        # Re-associate: row is in 'error' with no video_path but the original
-        # upload still exists on disk. Reattach so retry can find it.
+        # Re-associate: row has no video_path but the original upload still
+        # exists on disk. Reattach so retry works for 'error' rows and the
+        # player renders for 'done' rows whose post-process stage was
+        # interrupted before it could persist the enhanced video_path.
         if (
-            record.get("status") == "error"
+            record.get("status") in ("error", "done")
             and not record.get("video_path")
             and not p.name.endswith(("_preview" + p.suffix, "_enhanced.mp4"))
         ):
@@ -667,6 +669,12 @@ async def upload_video(
                 f"Upgrade to remove the limit.",
             )
 
+        # Persist video_path immediately so the player can render even if the
+        # post-process stage (which normally finalises video_path to the
+        # enhanced proxy) is interrupted by a restart. post_process will
+        # overwrite this with the enhanced path on success.
+        await db.update_transcription(job_id, video_path=str(save_path))
+
         _track_transcription(asyncio.create_task(_run_with_semaphore(job_id, save_path, use_diarize)))
         results.append({"id": job_id, "status": "pending"})
 
@@ -961,12 +969,19 @@ async def delete_video(job_id: str, user: dict = Depends(auth.require_user)):
 
 
 @app.post("/api/transcriptions/{job_id}/recap")
-async def get_or_generate_recap(job_id: str, regenerate: bool = False, user: dict = Depends(auth.require_user)):
+async def get_or_generate_recap(
+    job_id: str,
+    regenerate: bool = False,
+    guidance: str = Form(default=""),
+    user: dict = Depends(auth.require_user),
+):
     record = _require_owner(await db.get_transcription(job_id), user)
     if record["status"] != "done":
         raise HTTPException(400, "Transcription not complete")
 
-    if record.get("recap") and not regenerate:
+    # Regenerate with user guidance always bypasses the cache.
+    guidance = (guidance or "").strip()
+    if record.get("recap") and not regenerate and not guidance:
         return {"recap": record["recap"]}
 
     from transcriber import generate_recap as gen_recap
@@ -975,7 +990,7 @@ async def get_or_generate_recap(job_id: str, regenerate: bool = False, user: dic
 
     transcript = record["transcript_text"] or ""
     try:
-        recap = await gen_recap(transcript, client)
+        recap = await gen_recap(transcript, client, guidance=guidance or None)
     except Exception as e:
         logger.warning("On-demand recap failed for %s: %s", job_id, e)
         await db.update_transcription(job_id, recap_status="failed")

@@ -318,6 +318,30 @@
   justify-content: flex-end; border-top: 1px solid var(--border);
 }
 
+.recap-guidance-panel {
+  display: flex; flex-direction: column; gap: 0.6rem;
+  padding: 1rem; border-top: 1px solid var(--border);
+}
+.recap-guidance-panel label {
+  font-size: 0.8rem; font-weight: 600; color: var(--text);
+}
+.recap-guidance-hint {
+  font-weight: 400; color: var(--text-muted);
+}
+.recap-guidance-panel textarea {
+  width: 100%; resize: vertical; min-height: 70px;
+  padding: 0.6rem 0.7rem; font-size: 0.85rem; line-height: 1.45;
+  background: var(--surface-0); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  font-family: var(--font); outline: none;
+}
+.recap-guidance-panel textarea:focus {
+  border-color: var(--accent);
+}
+.recap-guidance-actions {
+  display: flex; gap: 0.5rem; justify-content: flex-end;
+}
+
 /* ============================================
    USER MENU (topbar dropdown)
    ============================================ */
