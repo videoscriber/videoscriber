@@ -1,0 +1,63 @@
+{# ============================================================
+   Shared <head> meta: favicons, Open Graph, Twitter, web manifest.
+   Include this with {% include "partials/head_meta.html" %} inside
+   the <head> of every top-level page so that every shareable URL
+   produces a correct preview across iMessage/Slack/Twitter/LinkedIn
+   and every browser tab + home-screen install shows the brand mark.
+
+   Callers can override the meta by setting these variables before
+   including the partial:
+     - page_title         (string, default: full site title)
+     - page_description   (string, default: marketing description)
+     - og_url             (string, default: full request URL)
+     - og_image           (string, default: branded og-image.png)
+     - og_type            (string, default: "website")
+     - robots             (string, default: "index, follow")
+   ============================================================ #}
+{% set _page_title = page_title if page_title is defined and page_title else "Videoscriber: AI transcription agents that always follow up" %}
+{% set _page_description = page_description if page_description is defined and page_description else "Videoscriber is the AI meeting assistant for people who hate taking notes. Turn any recording into a transcript, draft a recap email, and send the follow-up in under a minute: so every meeting stays aligned on next steps." %}
+{% set _canonical_path = (request.url.path if request is defined and request else "/") %}
+{% set _og_url = og_url if og_url is defined and og_url else "https://videoscriber.ai" ~ _canonical_path %}
+{% set _og_image = og_image if og_image is defined and og_image else "https://videoscriber.ai/static/brand/og-image.png?v=1" %}
+{% set _og_type = og_type if og_type is defined and og_type else "website" %}
+{% set _robots = robots if robots is defined and robots else "index, follow" %}
+
+<meta name="description" content="{{ _page_description }}">
+<meta name="robots" content="{{ _robots }}">
+<meta name="author" content="Videoscriber LLC">
+<link rel="canonical" href="{{ _og_url }}">
+
+{# Open Graph — Facebook, LinkedIn, iMessage, Slack, Discord #}
+<meta property="og:type" content="{{ _og_type }}">
+<meta property="og:site_name" content="Videoscriber">
+<meta property="og:url" content="{{ _og_url }}">
+<meta property="og:title" content="{{ _page_title }}">
+<meta property="og:description" content="{{ _page_description }}">
+<meta property="og:image" content="{{ _og_image }}">
+<meta property="og:image:secure_url" content="{{ _og_image }}">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Videoscriber: AI transcription agents that always follow up">
+<meta property="og:locale" content="en_US">
+
+{# Twitter / X — large-image card #}
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{{ _page_title }}">
+<meta name="twitter:description" content="{{ _page_description }}">
+<meta name="twitter:image" content="{{ _og_image }}">
+<meta name="twitter:image:alt" content="Videoscriber: AI transcription agents that always follow up">
+
+{# Browser + OS chrome #}
+<meta name="theme-color" content="#09090b">
+<meta name="apple-mobile-web-app-title" content="Videoscriber">
+<meta name="application-name" content="Videoscriber">
+
+{# Favicons — SVG for modern browsers, PNG fallbacks with explicit sizes,
+   180x180 Apple touch icon for iOS home screens, web manifest for Android
+   home-screen install + PWA metadata. #}
+<link rel="icon" type="image/svg+xml" href="/static/brand/mark.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/brand/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/static/brand/favicon-16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/static/brand/apple-touch-icon.png">
+<link rel="manifest" href="/static/site.webmanifest">
