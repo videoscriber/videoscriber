@@ -32,6 +32,7 @@ import billing_routes  # noqa: E402
 import chat_routes  # noqa: E402
 import database as db  # noqa: E402
 import domain_routes  # noqa: E402
+import integrations_routes  # noqa: E402
 from transcriber import process_transcription  # noqa: E402
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -290,6 +291,7 @@ app.include_router(auth_routes.router)
 app.include_router(billing_routes.router)
 app.include_router(chat_routes.router)
 app.include_router(domain_routes.router)
+app.include_router(integrations_routes.router)
 
 
 @app.middleware("http")

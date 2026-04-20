@@ -13,3 +13,4 @@ phonenumbers>=8.13
 numpy>=1.26
 weasyprint>=62.0
 stripe>=11.0
+cryptography>=42.0

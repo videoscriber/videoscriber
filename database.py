@@ -143,6 +143,50 @@ CREATE TABLE IF NOT EXISTS otp_rate_limits (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_otp_rate_key ON otp_rate_limits(key, action, created_at);
+
+-- Integrations: per-user connections to Zoom, Google Meet, and local folders.
+-- sync_mode is the user's toggle: 'off' (disabled), 'manual' (picker only),
+-- or 'auto' (background sync, Plus-only). access/refresh tokens are stored
+-- encrypted at rest using INTEGRATIONS_TOKEN_KEY in the env.
+CREATE TABLE IF NOT EXISTS integrations (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    account_label TEXT,
+    access_token_encrypted BLOB,
+    refresh_token_encrypted BLOB,
+    token_expires_at TEXT,
+    sync_mode TEXT NOT NULL DEFAULT 'manual',
+    settings_json TEXT,
+    last_sync_at TEXT,
+    last_sync_status TEXT,
+    last_sync_error TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_integrations_user_provider
+    ON integrations(user_id, provider);
+
+-- Imported-recording history. One row per external recording we've seen;
+-- deduping happens via (integration_id, external_id). Status tracks the
+-- pipeline from 'queued' through 'done' or 'error'.
+CREATE TABLE IF NOT EXISTS integration_imports (
+    id TEXT PRIMARY KEY,
+    integration_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    external_id TEXT NOT NULL,
+    external_title TEXT,
+    transcription_id TEXT,
+    status TEXT NOT NULL,
+    error_message TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (integration_id) REFERENCES integrations(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_imports_integration_external
+    ON integration_imports(integration_id, external_id);
+CREATE INDEX IF NOT EXISTS idx_imports_user_recent
+    ON integration_imports(user_id, created_at DESC);
 """
 
 MIGRATION_COLUMNS = [
@@ -250,6 +294,16 @@ async def _migrate_enforce_unique_indexes(
     await db.commit()
 
 
+async def _migrate_integrations_initial(db: aiosqlite.Connection) -> None:
+    """No-op migrator for the brand-new `integrations` and `integration_imports`
+    tables added in Phase 1. Both are created with CREATE TABLE IF NOT EXISTS,
+    so existing DBs simply get fresh tables populated only by new rows — there
+    are no pre-existing rows that could violate the NOT NULL / UNIQUE
+    constraints. This helper exists solely to document that fact and satisfy
+    the schema-tightening guard in CI."""
+    return None
+
+
 async def init_db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(DB_PATH) as db:
@@ -257,6 +311,7 @@ async def init_db():
         # Scans SCHEMA and auto-heals duplicates for every partial-unique
         # index, so new UNIQUE tightenings don't need a hand-written migrator.
         await _migrate_enforce_unique_indexes(db)
+        await _migrate_integrations_initial(db)
         await db.executescript(SCHEMA)
 
         # Migrate transcriptions: add new columns if missing
@@ -658,6 +713,224 @@ async def search_transcriptions(query: str, user_id: str | None = None) -> list[
 async def delete_transcription(id: str):
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("DELETE FROM transcriptions WHERE id = ?", (id,))
+        await db.commit()
+
+
+# ----------------------------------------------------------------------------
+# Integrations (Zoom, Google Meet, local folder) — Phase 1 CRUD. OAuth flows
+# + per-provider sync workers live alongside these helpers in later phases.
+# ----------------------------------------------------------------------------
+
+async def list_integrations(user_id: str) -> list[dict]:
+    """All integrations for a user, most-recently-updated first."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT id, user_id, provider, account_label, token_expires_at, "
+            "sync_mode, settings_json, last_sync_at, last_sync_status, "
+            "last_sync_error, created_at, updated_at "
+            "FROM integrations WHERE user_id = ? "
+            "ORDER BY updated_at DESC",
+            (user_id,),
+        ) as cursor:
+            return [dict(row) async for row in cursor]
+
+
+async def get_integration(integration_id: str, user_id: str) -> dict | None:
+    """Single integration, only if it belongs to the caller."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM integrations WHERE id = ? AND user_id = ?",
+            (integration_id, user_id),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def get_integration_by_provider(user_id: str, provider: str) -> dict | None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM integrations WHERE user_id = ? AND provider = ?",
+            (user_id, provider),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return dict(row) if row else None
+
+
+async def upsert_integration(
+    id: str,
+    user_id: str,
+    provider: str,
+    *,
+    account_label: str | None = None,
+    access_token_encrypted: bytes | None = None,
+    refresh_token_encrypted: bytes | None = None,
+    token_expires_at: str | None = None,
+    sync_mode: str = "manual",
+    settings_json: str | None = None,
+) -> None:
+    """Insert-or-update by (user_id, provider). Preserves existing tokens when
+    the caller omits them — useful when a user only toggles sync_mode."""
+    now = datetime.now(timezone.utc).isoformat()
+    async with aiosqlite.connect(DB_PATH) as db:
+        existing = None
+        async with db.execute(
+            "SELECT id, access_token_encrypted, refresh_token_encrypted, "
+            "token_expires_at, settings_json "
+            "FROM integrations WHERE user_id = ? AND provider = ?",
+            (user_id, provider),
+        ) as cursor:
+            existing = await cursor.fetchone()
+
+        at_enc = access_token_encrypted if access_token_encrypted is not None else (
+            existing[1] if existing else None
+        )
+        rt_enc = refresh_token_encrypted if refresh_token_encrypted is not None else (
+            existing[2] if existing else None
+        )
+        exp = token_expires_at if token_expires_at is not None else (
+            existing[3] if existing else None
+        )
+        settings = settings_json if settings_json is not None else (
+            existing[4] if existing else None
+        )
+
+        if existing:
+            await db.execute(
+                "UPDATE integrations SET "
+                "account_label = COALESCE(?, account_label), "
+                "access_token_encrypted = ?, refresh_token_encrypted = ?, "
+                "token_expires_at = ?, sync_mode = ?, settings_json = ?, "
+                "updated_at = ? "
+                "WHERE id = ?",
+                (account_label, at_enc, rt_enc, exp, sync_mode, settings,
+                 now, existing[0]),
+            )
+        else:
+            await db.execute(
+                "INSERT INTO integrations "
+                "(id, user_id, provider, account_label, access_token_encrypted, "
+                "refresh_token_encrypted, token_expires_at, sync_mode, "
+                "settings_json, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (id, user_id, provider, account_label, at_enc, rt_enc, exp,
+                 sync_mode, settings, now, now),
+            )
+        await db.commit()
+
+
+async def update_integration_sync_state(
+    integration_id: str,
+    *,
+    sync_mode: str | None = None,
+    settings_json: str | None = None,
+    last_sync_at: str | None = None,
+    last_sync_status: str | None = None,
+    last_sync_error: str | None = None,
+) -> None:
+    """Update only the sync-related columns. Any arg set to None is left alone."""
+    fields = []
+    params: list = []
+    for col, val in (
+        ("sync_mode", sync_mode),
+        ("settings_json", settings_json),
+        ("last_sync_at", last_sync_at),
+        ("last_sync_status", last_sync_status),
+        ("last_sync_error", last_sync_error),
+    ):
+        if val is not None:
+            fields.append(f"{col} = ?")
+            params.append(val)
+    if not fields:
+        return
+    fields.append("updated_at = ?")
+    params.append(datetime.now(timezone.utc).isoformat())
+    params.append(integration_id)
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            f"UPDATE integrations SET {', '.join(fields)} WHERE id = ?",
+            params,
+        )
+        await db.commit()
+
+
+async def delete_integration(integration_id: str, user_id: str) -> None:
+    """Disconnect: removes the integration row; CASCADE removes its imports."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "DELETE FROM integrations WHERE id = ? AND user_id = ?",
+            (integration_id, user_id),
+        )
+        await db.commit()
+
+
+async def list_integration_imports(integration_id: str, limit: int = 20) -> list[dict]:
+    """Recent imports for a single integration, newest first."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT id, external_id, external_title, transcription_id, status, "
+            "error_message, created_at "
+            "FROM integration_imports WHERE integration_id = ? "
+            "ORDER BY created_at DESC LIMIT ?",
+            (integration_id, limit),
+        ) as cursor:
+            return [dict(row) async for row in cursor]
+
+
+async def create_integration_import(
+    id: str,
+    integration_id: str,
+    user_id: str,
+    external_id: str,
+    *,
+    external_title: str | None = None,
+    status: str = "queued",
+) -> bool:
+    """Insert an import row. Returns False if (integration_id, external_id) was
+    already seen — callers treat that as "skip, dedupe hit"."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        try:
+            await db.execute(
+                "INSERT INTO integration_imports "
+                "(id, integration_id, user_id, external_id, external_title, "
+                "status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (id, integration_id, user_id, external_id, external_title,
+                 status, datetime.now(timezone.utc).isoformat()),
+            )
+            await db.commit()
+            return True
+        except aiosqlite.IntegrityError:
+            return False
+
+
+async def update_integration_import(
+    import_id: str,
+    *,
+    status: str | None = None,
+    transcription_id: str | None = None,
+    error_message: str | None = None,
+) -> None:
+    fields = []
+    params: list = []
+    for col, val in (
+        ("status", status),
+        ("transcription_id", transcription_id),
+        ("error_message", error_message),
+    ):
+        if val is not None:
+            fields.append(f"{col} = ?")
+            params.append(val)
+    if not fields:
+        return
+    params.append(import_id)
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            f"UPDATE integration_imports SET {', '.join(fields)} WHERE id = ?",
+            params,
+        )
         await db.commit()
 
 

@@ -182,6 +182,19 @@ Videoscriber &middot; https://videoscriber.ai">{{ user.email_signature or '' }}<
         </div>
     </section>
 
+    <section class="settings-section" id="integrations-section">
+        <h2>Integrations</h2>
+        <p class="section-sub">
+            Pull recordings in from the places they already live. Pick manually
+            when you want to &mdash; or let Videoscriber sync new recordings
+            automatically (Plus plan).
+        </p>
+
+        <div class="form-error" id="integrations-error"></div>
+        <div id="integrations-loading" class="integrations-loading">Loading&hellip;</div>
+        <div id="integrations-list" class="integrations-list" hidden></div>
+    </section>
+
     <section class="settings-section">
         <h2>Account</h2>
         <p class="section-sub">Read-only details about your account. These are the identifiers we use to sign you in.</p>
@@ -418,6 +431,203 @@ Videoscriber &middot; https://videoscriber.ai">{{ user.email_signature or '' }}<
             submit.disabled = false; submit.textContent = 'Save changes';
         }
     });
+})();
+
+// ===========================================================================
+// Integrations panel
+// ---------------------------------------------------------------------------
+// Renders per-provider cards (Zoom, Google Meet, local folder). Each card
+// shows either a Connect button (not connected) or a status block with a
+// sync-mode selector + Disconnect (connected). Everything calls the new
+// /api/integrations endpoints — OAuth for Zoom/Meet is stubbed until the
+// server env is configured, in which case Connect returns a 503 that we
+// surface as a friendly inline message.
+// ===========================================================================
+(() => {
+    const listEl = document.getElementById('integrations-list');
+    const loadingEl = document.getElementById('integrations-loading');
+    const errorEl = document.getElementById('integrations-error');
+    if (!listEl) return;
+
+    const SYNC_MODE_LABELS = {
+        off: 'Off',
+        manual: 'Pick manually',
+        auto: 'Auto-sync new recordings',
+    };
+
+    const isDesktop = document.body.classList.contains('is-desktop');
+
+    function showError(msg) {
+        errorEl.textContent = msg;
+        errorEl.classList.add('active');
+        setTimeout(() => errorEl.classList.remove('active'), 6000);
+    }
+
+    async function fetchStatus() {
+        const res = await fetch('/api/integrations/status');
+        if (!res.ok) throw new Error('Could not load integrations');
+        return res.json();
+    }
+
+    async function render() {
+        loadingEl.hidden = false;
+        listEl.hidden = true;
+        try {
+            const data = await fetchStatus();
+            listEl.innerHTML = data.cards
+                .filter(c => !(c.desktop_only && !isDesktop))
+                .map(c => renderCard(c, data.auto_sync_available))
+                .join('');
+            listEl.hidden = false;
+            wireCardActions(data.auto_sync_available);
+        } catch (e) {
+            showError(e.message || 'Could not load integrations');
+        } finally {
+            loadingEl.hidden = true;
+        }
+    }
+
+    function renderCard(card, autoAvailable) {
+        const connected = !!card.integration;
+        return `
+          <article class="integration-row" data-provider="${card.provider}"
+                   ${connected ? `data-integration-id="${card.integration.id}"` : ''}>
+            <div class="integration-row-head">
+              <div class="integration-row-meta">
+                <div class="integration-row-label">${escapeHtml(card.label)}</div>
+                <div class="integration-row-desc">${escapeHtml(card.description)}</div>
+                ${connected ? `<div class="integration-row-account">Connected as ${escapeHtml(card.integration.account_label || '—')}</div>` : ''}
+              </div>
+              <div class="integration-row-actions">
+                ${connected
+                    ? `<button type="button" class="btn-danger-sm" data-act="disconnect">Disconnect</button>`
+                    : renderConnectButton(card)}
+              </div>
+            </div>
+            ${connected ? renderModeRow(card, autoAvailable) : ''}
+          </article>
+        `;
+    }
+
+    function renderConnectButton(card) {
+        if (card.provider === 'local_folder') {
+            // Desktop calls window.electronAPI.pickFolder() in Phase 4; web
+            // users never see this card (filtered out above).
+            return `<button type="button" class="btn btn-primary" data-act="connect-folder">Pick folder</button>`;
+        }
+        if (!card.configured) {
+            return `<span class="integration-soon">Coming soon</span>`;
+        }
+        return `<button type="button" class="btn btn-primary" data-act="connect">Connect</button>`;
+    }
+
+    function renderModeRow(card, autoAvailable) {
+        const mode = card.integration.sync_mode || 'manual';
+        const modes = ['off', 'manual', 'auto'];
+        return `
+          <div class="integration-row-mode">
+            <label for="mode-${card.provider}">Sync mode</label>
+            <select id="mode-${card.provider}" data-act="mode">
+              ${modes.map(m => `
+                <option value="${m}" ${m === mode ? 'selected' : ''}
+                        ${m === 'auto' && !autoAvailable ? 'disabled' : ''}>
+                  ${SYNC_MODE_LABELS[m]}${m === 'auto' && !autoAvailable ? ' (Plus)' : ''}
+                </option>
+              `).join('')}
+            </select>
+            ${mode === 'auto' ? '<span class="integration-chip chip-ok">Auto</span>' : ''}
+          </div>
+        `;
+    }
+
+    function wireCardActions(autoAvailable) {
+        listEl.querySelectorAll('.integration-row').forEach(row => {
+            const provider = row.dataset.provider;
+            const id = row.dataset.integrationId;
+
+            row.querySelector('[data-act="connect"]')?.addEventListener('click', () => connectOAuth(provider));
+            row.querySelector('[data-act="connect-folder"]')?.addEventListener('click', () => connectLocalFolder());
+            row.querySelector('[data-act="disconnect"]')?.addEventListener('click', () => disconnect(id));
+            row.querySelector('[data-act="mode"]')?.addEventListener('change', (e) => changeMode(id, e.target.value, autoAvailable));
+        });
+    }
+
+    async function connectOAuth(provider) {
+        try {
+            const res = await fetch(`/api/integrations/${provider}/connect`, { method: 'POST' });
+            if (res.status === 503) {
+                showError(`${provider === 'zoom' ? 'Zoom' : 'Google Meet'} isn't set up yet — OAuth credentials still need to be configured on the server. We'll email you when it goes live.`);
+                return;
+            }
+            if (res.status === 501) {
+                showError('This integration is coming soon.');
+                return;
+            }
+            const data = await res.json();
+            if (data.redirect) {
+                window.location.href = data.redirect;
+                return;
+            }
+            await render();
+        } catch (e) {
+            showError(e.message || 'Could not connect');
+        }
+    }
+
+    async function connectLocalFolder() {
+        // On desktop the Electron shell exposes pickFolder(); on web we prompt.
+        let folderPath = null;
+        if (isDesktop && window.electronAPI?.pickFolder) {
+            folderPath = await window.electronAPI.pickFolder();
+        } else {
+            folderPath = prompt('Absolute path to the folder to watch:');
+        }
+        if (!folderPath) return;
+        const body = new URLSearchParams({ folder_path: folderPath });
+        const res = await fetch('/api/integrations/local_folder/connect', {
+            method: 'POST',
+            body,
+        });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            showError(data.detail || 'Could not save folder');
+            return;
+        }
+        await render();
+    }
+
+    async function disconnect(id) {
+        if (!confirm('Disconnect this integration? You can reconnect later.')) return;
+        const res = await fetch(`/api/integrations/${id}`, { method: 'DELETE' });
+        if (!res.ok) {
+            showError('Could not disconnect');
+            return;
+        }
+        await render();
+    }
+
+    async function changeMode(id, mode, autoAvailable) {
+        if (mode === 'auto' && !autoAvailable) {
+            showError('Auto-sync is a Plus feature. Upgrade to enable it.');
+            await render();
+            return;
+        }
+        const body = new URLSearchParams({ sync_mode: mode });
+        const res = await fetch(`/api/integrations/${id}`, { method: 'PATCH', body });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            showError(data.detail || 'Could not update sync mode');
+            await render();
+        }
+    }
+
+    function escapeHtml(s) {
+        const el = document.createElement('span');
+        el.textContent = s == null ? '' : String(s);
+        return el.innerHTML;
+    }
+
+    render();
 })();
 </script>
 </body>
