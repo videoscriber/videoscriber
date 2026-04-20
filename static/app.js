@@ -69,10 +69,38 @@ formatTabs.forEach(tab => {
 });
 
 // Copy
+function formatTs(seconds) {
+  const s = Math.max(0, Number(seconds) || 0);
+  const m = Math.floor(s / 60);
+  const ss = Math.floor(s % 60).toString().padStart(2, '0');
+  return `${m}:${ss}`;
+}
+
+function buildCopyText(record) {
+  // Prefer the segment-level view: timestamp + speaker + text per line.
+  // Falls back to the flat transcript_text if segments are unavailable.
+  if (!record.transcript_segments_json) return record.transcript_text || '';
+  let segments;
+  try { segments = JSON.parse(record.transcript_segments_json); }
+  catch { return record.transcript_text || ''; }
+  if (!Array.isArray(segments) || !segments.length) return record.transcript_text || '';
+  return segments.map(seg => {
+    const ts = formatTs(seg.start);
+    const speaker = (seg.speaker || '').trim();
+    const text = (seg.text || '').trim();
+    return speaker ? `[${ts}] ${speaker}: ${text}` : `[${ts}] ${text}`;
+  }).join('\n');
+}
+
 btnCopy.addEventListener('click', async () => {
   if (!activeRecord) return;
-  const fieldMap = { segments: 'transcript_text', text: 'transcript_text', srt: 'transcript_srt', vtt: 'transcript_vtt' };
-  const text = activeRecord[fieldMap[activeFormat]] || '';
+  let text;
+  if (activeFormat === 'segments') {
+    text = buildCopyText(activeRecord);
+  } else {
+    const fieldMap = { text: 'transcript_text', srt: 'transcript_srt', vtt: 'transcript_vtt' };
+    text = activeRecord[fieldMap[activeFormat]] || '';
+  }
   await navigator.clipboard.writeText(text);
   const span = btnCopy.querySelector('span');
   const orig = span.textContent;
