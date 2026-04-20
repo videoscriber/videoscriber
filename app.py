@@ -261,10 +261,12 @@ async def _cleanup_orphans() -> None:
             except OSError as e:
                 logger.warning("Could not remove orphan upload %s: %s", p, e)
             continue
-        # Re-associate: row is in 'error' with no video_path but the original
-        # upload still exists on disk. Reattach so retry can find it.
+        # Re-associate: row has no video_path but the original upload still
+        # exists on disk. Reattach so retry works for 'error' rows and the
+        # player renders for 'done' rows whose post-process stage was
+        # interrupted before it could persist the enhanced video_path.
         if (
-            record.get("status") == "error"
+            record.get("status") in ("error", "done")
             and not record.get("video_path")
             and not p.name.endswith(("_preview" + p.suffix, "_enhanced.mp4"))
         ):
@@ -666,6 +668,12 @@ async def upload_video(
                 f"Free plan allows {limits['monthly_limit']} transcriptions per {USAGE_WINDOW_DAYS} days. "
                 f"Upgrade to remove the limit.",
             )
+
+        # Persist video_path immediately so the player can render even if the
+        # post-process stage (which normally finalises video_path to the
+        # enhanced proxy) is interrupted by a restart. post_process will
+        # overwrite this with the enhanced path on success.
+        await db.update_transcription(job_id, video_path=str(save_path))
 
         _track_transcription(asyncio.create_task(_run_with_semaphore(job_id, save_path, use_diarize)))
         results.append({"id": job_id, "status": "pending"})
