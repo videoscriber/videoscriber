@@ -345,7 +345,15 @@ async def settings_page(request: Request):
         return RedirectResponse("/login", status_code=303)
     if not user.get("profile_completed_at"):
         return RedirectResponse("/signup/profile", status_code=303)
-    return templates.TemplateResponse(request, "settings.html", {"user": user})
+    plan = user.get("plan") or "free"
+    limits = _plan_limits(plan)
+    used = await _usage_count(user["user_id"])
+    return templates.TemplateResponse(request, "settings.html", {
+        "user": user,
+        "plan": plan,
+        "plan_limits": limits,
+        "plan_used": used,
+    })
 
 
 @app.get("/upgrade", response_class=HTMLResponse)
