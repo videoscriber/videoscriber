@@ -40,6 +40,10 @@ const recapSubject = document.getElementById('recap-subject');
 const recapCopy = document.getElementById('recap-copy');
 const recapSend = document.getElementById('recap-send');
 const recapRegenerate = document.getElementById('recap-regenerate');
+const recapGuidancePanel = document.getElementById('recap-guidance-panel');
+const recapGuidance = document.getElementById('recap-guidance');
+const recapGuidanceCancel = document.getElementById('recap-guidance-cancel');
+const recapGuidanceSubmit = document.getElementById('recap-guidance-submit');
 const btnRename = document.getElementById('btn-rename');
 const renameInput = document.getElementById('rename-input');
 
@@ -69,10 +73,38 @@ formatTabs.forEach(tab => {
 });
 
 // Copy
+function formatTs(seconds) {
+  const s = Math.max(0, Number(seconds) || 0);
+  const m = Math.floor(s / 60);
+  const ss = Math.floor(s % 60).toString().padStart(2, '0');
+  return `${m}:${ss}`;
+}
+
+function buildCopyText(record) {
+  // Prefer the segment-level view: timestamp + speaker + text per line.
+  // Falls back to the flat transcript_text if segments are unavailable.
+  if (!record.transcript_segments_json) return record.transcript_text || '';
+  let segments;
+  try { segments = JSON.parse(record.transcript_segments_json); }
+  catch { return record.transcript_text || ''; }
+  if (!Array.isArray(segments) || !segments.length) return record.transcript_text || '';
+  return segments.map(seg => {
+    const ts = formatTs(seg.start);
+    const speaker = (seg.speaker || '').trim();
+    const text = (seg.text || '').trim();
+    return speaker ? `[${ts}] ${speaker}: ${text}` : `[${ts}] ${text}`;
+  }).join('\n');
+}
+
 btnCopy.addEventListener('click', async () => {
   if (!activeRecord) return;
-  const fieldMap = { segments: 'transcript_text', text: 'transcript_text', srt: 'transcript_srt', vtt: 'transcript_vtt' };
-  const text = activeRecord[fieldMap[activeFormat]] || '';
+  let text;
+  if (activeFormat === 'segments') {
+    text = buildCopyText(activeRecord);
+  } else {
+    const fieldMap = { text: 'transcript_text', srt: 'transcript_srt', vtt: 'transcript_vtt' };
+    text = activeRecord[fieldMap[activeFormat]] || '';
+  }
   await navigator.clipboard.writeText(text);
   const span = btnCopy.querySelector('span');
   const orig = span.textContent;
@@ -821,16 +853,37 @@ function initRecap() {
     setTimeout(() => { recapCopy.textContent = orig; }, 1500);
   });
 
-  recapRegenerate.addEventListener('click', () => generateRecap(true));
+  recapRegenerate.addEventListener('click', () => openGuidancePanel());
+  recapGuidanceCancel.addEventListener('click', () => closeGuidancePanel());
+  recapGuidanceSubmit.addEventListener('click', () => {
+    const guidance = recapGuidance.value.trim();
+    closeGuidancePanel();
+    generateRecap(true, guidance);
+  });
 
   recapSend.addEventListener('click', sendRecapEmail);
 
   window._openRecap = generateRecap;
 }
 
-async function generateRecap(regenerate = false) {
+function openGuidancePanel() {
+  recapEditor.hidden = true;
+  recapActions.hidden = true;
+  recapGuidancePanel.hidden = false;
+  recapGuidance.value = '';
+  recapGuidance.focus();
+}
+
+function closeGuidancePanel() {
+  recapGuidancePanel.hidden = true;
+  recapEditor.hidden = false;
+  recapActions.hidden = false;
+}
+
+async function generateRecap(regenerate = false, guidance = '') {
   if (!activeJobId) return;
   openRecapModal();
+  recapGuidancePanel.hidden = true;
 
   // Fast path: the recap was pre-generated during post-processing. Open the
   // editor immediately so the user sees real content, not a spinner.
@@ -845,10 +898,12 @@ async function generateRecap(regenerate = false) {
 
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
+    const timeout = setTimeout(() => controller.abort(), 45000);
 
     const url = `/api/transcriptions/${activeJobId}/recap${regenerate ? '?regenerate=true' : ''}`;
-    const res = await fetch(url, { method: 'POST', signal: controller.signal });
+    const body = new FormData();
+    if (guidance) body.append('guidance', guidance);
+    const res = await fetch(url, { method: 'POST', body, signal: controller.signal });
     clearTimeout(timeout);
 
     const data = await res.json();
