@@ -46,6 +46,57 @@ const recapGuidanceCancel = document.getElementById('recap-guidance-cancel');
 const recapGuidanceSubmit = document.getElementById('recap-guidance-submit');
 const btnRename = document.getElementById('btn-rename');
 const renameInput = document.getElementById('rename-input');
+const renameModal = document.getElementById('rename-modal');
+const renameModalInput = document.getElementById('rename-modal-input');
+const renameModalCancel = document.getElementById('rename-modal-cancel');
+const renameModalSave = document.getElementById('rename-modal-save');
+const renameModalClose = renameModal?.querySelector('.modal-close');
+
+// Mobile (≤768) renames open a modal instead of editing in place — narrow
+// inline inputs are fiddly to type into on a phone, and the virtual keyboard
+// covers adjacent UI anyway.
+const MOBILE_BREAKPOINT = 768;
+const isMobileViewport = () => window.innerWidth <= MOBILE_BREAKPOINT;
+
+// Shared rename modal: resolves to the new name on save, null on cancel.
+// Callers handle the actual PATCH so we can reuse it for both the title
+// header and the sidebar list items.
+function openRenameModal(currentName) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      renameModal.hidden = true;
+      renameModalSave.removeEventListener('click', onSave);
+      renameModalCancel.removeEventListener('click', onCancel);
+      renameModalClose?.removeEventListener('click', onCancel);
+      renameModal.removeEventListener('mousedown', onOverlay);
+      renameModalInput.removeEventListener('keydown', onKey);
+      document.removeEventListener('keydown', onEsc);
+      resolve(value);
+    };
+    const onSave = () => finish(renameModalInput.value.trim() || null);
+    const onCancel = () => finish(null);
+    const onOverlay = (e) => { if (e.target === renameModal) onCancel(); };
+    const onKey = (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); onSave(); }
+      if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+    };
+    const onEsc = (e) => { if (e.key === 'Escape') onCancel(); };
+
+    renameModalInput.value = currentName || '';
+    renameModal.hidden = false;
+    renameModalSave.addEventListener('click', onSave);
+    renameModalCancel.addEventListener('click', onCancel);
+    renameModalClose?.addEventListener('click', onCancel);
+    renameModal.addEventListener('mousedown', onOverlay);
+    renameModalInput.addEventListener('keydown', onKey);
+    document.addEventListener('keydown', onEsc);
+    // Defer focus so iOS Safari lifts the keyboard cleanly.
+    setTimeout(() => { renameModalInput.focus(); renameModalInput.select(); }, 50);
+  });
+}
 
 // === Init ===
 initTheme();
@@ -528,14 +579,45 @@ window._retryJob = async function(jobId, event) {
   showToast('Retrying transcription...', 'info');
 };
 
-// Inline rename from the sidebar list. Replaces the filename span with an input.
-window._startItemRename = function(jobId, event) {
+// Apply a rename via the PATCH endpoint and sync both the sidebar list item
+// and the open transcript detail header. Shared by the inline and modal flows.
+async function applyRename(jobId, nextName) {
+  const body = new URLSearchParams({ filename: nextName });
+  const res = await fetch(`/api/transcriptions/${jobId}`, { method: 'PATCH', body });
+  if (!res.ok) throw new Error('Rename failed');
+  const data = await res.json();
+  const finalName = data.filename || nextName;
+  const nameEl = document.querySelector(`.transcription-item[data-id="${jobId}"] .item-filename`);
+  if (nameEl) nameEl.textContent = finalName;
+  if (jobId === activeJobId && activeRecord) {
+    activeRecord.filename = finalName;
+    if (transcriptTitle) transcriptTitle.textContent = finalName;
+  }
+  return finalName;
+}
+
+// Rename from the sidebar list.
+// - Desktop: inline input replaces the filename span (fast, keyboard-friendly).
+// - Mobile: opens the shared rename modal so a phone keyboard has room.
+window._startItemRename = async function(jobId, event) {
   event.stopPropagation();
   const item = document.querySelector(`.transcription-item[data-id="${jobId}"]`);
   if (!item) return;
   const nameEl = item.querySelector('.item-filename');
   if (!nameEl) return;
   const original = nameEl.textContent;
+
+  if (isMobileViewport()) {
+    const next = await openRenameModal(original);
+    if (!next || next === original) return;
+    try {
+      await applyRename(jobId, next);
+      showToast('Renamed', 'success');
+    } catch {
+      showToast('Could not rename. Try again.', 'error');
+    }
+    return;
+  }
 
   const input = document.createElement('input');
   input.type = 'text';
@@ -549,19 +631,8 @@ window._startItemRename = function(jobId, event) {
     nameEl.textContent = original;
     if (!commit || !next || next === original) return;
     try {
-      const body = new URLSearchParams({ filename: next });
-      const res = await fetch(`/api/transcriptions/${jobId}`, { method: 'PATCH', body });
-      if (!res.ok) throw new Error('Rename failed');
-      const data = await res.json();
-      nameEl.textContent = data.filename || next;
-      // Sync the detail-view title if this is the open transcript
-      if (jobId === activeJobId && activeRecord) {
-        activeRecord.filename = data.filename || next;
-        if (typeof transcriptTitle !== 'undefined' && transcriptTitle) {
-          transcriptTitle.textContent = activeRecord.filename;
-        }
-      }
-    } catch (e) {
+      await applyRename(jobId, next);
+    } catch {
       showToast('Could not rename. Try again.', 'error');
     }
   };
@@ -582,8 +653,7 @@ window._startItemRename = function(jobId, event) {
 function initRename() {
   const titleEl = transcriptTitle;
 
-  function startRename() {
-    if (!activeJobId || !activeRecord) return;
+  function openInlineRename() {
     titleEl.hidden = true;
     btnRename.hidden = true;
     renameInput.hidden = false;
@@ -592,37 +662,50 @@ function initRename() {
     renameInput.select();
   }
 
-  function cancelRename() {
+  function cancelInlineRename() {
     renameInput.hidden = true;
     titleEl.hidden = false;
     btnRename.hidden = false;
   }
 
-  async function commitRename() {
+  async function commitInlineRename() {
     const newName = renameInput.value.trim();
-    if (!newName || !activeJobId) { cancelRename(); return; }
-    if (newName === activeRecord.filename) { cancelRename(); return; }
+    if (!newName || !activeJobId) { cancelInlineRename(); return; }
+    if (newName === activeRecord.filename) { cancelInlineRename(); return; }
+    try {
+      await applyRename(activeJobId, newName);
+      showToast('Renamed', 'success');
+    } catch {
+      showToast('Could not rename. Try again.', 'error');
+    }
+    cancelInlineRename();
+  }
 
-    const formData = new FormData();
-    formData.append('filename', newName);
-    await fetch(`/api/transcriptions/${activeJobId}`, { method: 'PATCH', body: formData });
-
-    activeRecord.filename = newName;
-    titleEl.textContent = newName;
-    cancelRename();
-    refreshList();
-    showToast('Renamed', 'success');
+  async function startRename() {
+    if (!activeJobId || !activeRecord) return;
+    if (isMobileViewport()) {
+      const next = await openRenameModal(activeRecord.filename);
+      if (!next || next === activeRecord.filename) return;
+      try {
+        await applyRename(activeJobId, next);
+        showToast('Renamed', 'success');
+      } catch {
+        showToast('Could not rename. Try again.', 'error');
+      }
+      return;
+    }
+    openInlineRename();
   }
 
   titleEl.addEventListener('click', startRename);
   btnRename.addEventListener('click', startRename);
 
   renameInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
-    if (e.key === 'Escape') cancelRename();
+    if (e.key === 'Enter') { e.preventDefault(); commitInlineRename(); }
+    if (e.key === 'Escape') cancelInlineRename();
   });
 
-  renameInput.addEventListener('blur', commitRename);
+  renameInput.addEventListener('blur', commitInlineRename);
 }
 
 // === Video Upload ===

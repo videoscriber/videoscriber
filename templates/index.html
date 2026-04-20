@@ -289,6 +289,24 @@
         </div>
     </main>
 
+    <!-- Rename Modal (used on mobile for both the title and sidebar list items) -->
+    <div id="rename-modal" class="modal-overlay" hidden>
+        <div class="modal-dialog rename-dialog">
+            <div class="modal-header">
+                <h3>Rename transcript</h3>
+                <button class="modal-close" aria-label="Close">&times;</button>
+            </div>
+            <div class="rename-body">
+                <label for="rename-modal-input" class="rename-label">Name</label>
+                <input type="text" id="rename-modal-input" autocomplete="off" autocapitalize="sentences" spellcheck="false">
+            </div>
+            <div class="rename-actions">
+                <button type="button" class="btn-ghost" id="rename-modal-cancel">Cancel</button>
+                <button type="button" class="btn-primary" id="rename-modal-save">Save</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Recap Email Modal -->
     <div id="recap-modal" class="modal-overlay" hidden>
         <div class="modal-dialog recap-dialog">

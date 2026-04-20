@@ -269,6 +269,41 @@
   padding: 0.1rem 0.35rem;
 }
 
+/* Rename modal */
+.rename-dialog {
+  width: 420px;
+  max-width: calc(100vw - 1rem);
+  display: flex;
+  flex-direction: column;
+}
+.rename-body {
+  display: flex; flex-direction: column; gap: 0.45rem;
+  padding: 1rem;
+}
+.rename-label {
+  font-size: 0.7rem; font-weight: 600; color: var(--text-muted);
+  letter-spacing: 0.06em; text-transform: uppercase;
+}
+.rename-body input {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.92rem;
+  background: var(--surface-0);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  outline: none;
+}
+.rename-body input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+.rename-actions {
+  display: flex; gap: 0.5rem; padding: 0.75rem 1rem;
+  justify-content: flex-end;
+  border-top: 1px solid var(--border);
+}
+
 /* Recap modal */
 .recap-dialog {
   width: 600px; max-height: 80vh;
