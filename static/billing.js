@@ -1,5 +1,38 @@
 import { showToast } from './toast.js';
 
+// In-app "Upgrade to Plus" link on the Free plan widget: skip the /upgrade
+// comparison page and go straight to Stripe Checkout (monthly). The anchor's
+// href="/upgrade" is preserved as a no-JS fallback and as the error path.
+const upgradeQuick = document.getElementById('plan-upgrade-quick');
+if (upgradeQuick) {
+  upgradeQuick.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const originalText = upgradeQuick.textContent;
+    upgradeQuick.textContent = 'Opening checkout…';
+    upgradeQuick.style.pointerEvents = 'none';
+    upgradeQuick.style.opacity = '0.7';
+    try {
+      const res = await fetch('/api/billing/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ plan: 'monthly' }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      window.location.href = data.url;
+    } catch (err) {
+      // Fall back to the plan-picker page so the user still has a path
+      upgradeQuick.textContent = originalText;
+      upgradeQuick.style.pointerEvents = '';
+      upgradeQuick.style.opacity = '';
+      showToast('Could not start checkout. Opening the pricing page…', 'error');
+      console.error(err);
+      setTimeout(() => { window.location.href = '/upgrade'; }, 800);
+    }
+  });
+}
+
 // In-app "Manage billing" link: POST to /api/billing/portal and redirect
 // to Stripe's hosted Customer Portal (update card, cancel, invoices).
 const manageBtn = document.getElementById('plan-manage-billing');
