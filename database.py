@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS users (
     plan TEXT NOT NULL DEFAULT 'free',
     stripe_customer_id TEXT,
     stripe_payment_method_id TEXT,
+    stripe_subscription_id TEXT,
     plan_activated_at TEXT,
     custom_email_domain TEXT,
     custom_email_domain_id TEXT,
@@ -163,6 +164,7 @@ USER_MIGRATION_COLUMNS = [
     ("plan", "TEXT NOT NULL DEFAULT 'free'"),
     ("stripe_customer_id", "TEXT"),
     ("stripe_payment_method_id", "TEXT"),
+    ("stripe_subscription_id", "TEXT"),
     ("plan_activated_at", "TEXT"),
     ("custom_email_domain", "TEXT"),
     ("custom_email_domain_id", "TEXT"),
@@ -511,23 +513,48 @@ async def delete_transcriptions_bulk(ids: list[str]) -> None:
 
 async def set_user_plan(user_id: str, plan: str,
                         stripe_customer_id: str | None = None,
-                        stripe_payment_method_id: str | None = None) -> None:
+                        stripe_payment_method_id: str | None = None,
+                        stripe_subscription_id: str | None = None) -> None:
     now = datetime.now(timezone.utc).isoformat()
     async with aiosqlite.connect(DB_PATH) as db:
         if plan == 'plus':
             await db.execute(
                 "UPDATE users SET plan = ?, plan_activated_at = ?, "
                 "stripe_customer_id = COALESCE(?, stripe_customer_id), "
-                "stripe_payment_method_id = COALESCE(?, stripe_payment_method_id) "
+                "stripe_payment_method_id = COALESCE(?, stripe_payment_method_id), "
+                "stripe_subscription_id = COALESCE(?, stripe_subscription_id) "
                 "WHERE id = ?",
-                (plan, now, stripe_customer_id, stripe_payment_method_id, user_id),
+                (plan, now, stripe_customer_id, stripe_payment_method_id,
+                 stripe_subscription_id, user_id),
             )
         else:
             await db.execute(
-                "UPDATE users SET plan = ?, plan_activated_at = NULL WHERE id = ?",
+                "UPDATE users SET plan = ?, plan_activated_at = NULL, "
+                "stripe_subscription_id = NULL WHERE id = ?",
                 (plan, user_id),
             )
         await db.commit()
+
+
+async def set_user_stripe_customer(user_id: str, customer_id: str) -> None:
+    """Link a Stripe Customer to a user (called before creating a Checkout Session)."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET stripe_customer_id = ? WHERE id = ?",
+            (customer_id, user_id),
+        )
+        await db.commit()
+
+
+async def get_user_by_stripe_customer(customer_id: str) -> dict | None:
+    """Look up a user by their Stripe Customer ID — used by webhook handlers."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM users WHERE stripe_customer_id = ?", (customer_id,)
+        ) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
 
 
 async def update_transcription(id: str, **fields):
