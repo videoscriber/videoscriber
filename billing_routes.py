@@ -28,8 +28,11 @@ STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 STRIPE_PRICE_MONTHLY = os.getenv("STRIPE_PRICE_MONTHLY", "")
 STRIPE_PRICE_ANNUAL = os.getenv("STRIPE_PRICE_ANNUAL", "")
-STRIPE_SUCCESS_URL = os.getenv("STRIPE_SUCCESS_URL", "http://127.0.0.1:8000/upgrade?status=success")
+STRIPE_SUCCESS_URL = os.getenv("STRIPE_SUCCESS_URL", "http://127.0.0.1:8000/app?upgraded=1")
 STRIPE_CANCEL_URL = os.getenv("STRIPE_CANCEL_URL", "http://127.0.0.1:8000/upgrade?status=canceled")
+# Where the Stripe Customer Portal returns users to after they close the hosted
+# session (update card, cancel, etc.). Defaults to the in-app home.
+STRIPE_PORTAL_RETURN_URL = os.getenv("STRIPE_PORTAL_RETURN_URL", "http://127.0.0.1:8000/app")
 
 if STRIPE_SECRET_KEY:
     stripe.api_key = STRIPE_SECRET_KEY
@@ -126,7 +129,7 @@ async def open_portal(request: Request):
         portal = await asyncio.to_thread(
             stripe.billing_portal.Session.create,
             customer=customer_id,
-            return_url=STRIPE_SUCCESS_URL.replace("?status=success", ""),
+            return_url=STRIPE_PORTAL_RETURN_URL,
         )
     except stripe.StripeError as e:
         logger.warning("Stripe portal creation failed: %s", e)
