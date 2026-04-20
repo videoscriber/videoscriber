@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="/static/public.css">
 </head>
 <body class="public-body">
+<div id="toast-container" class="toast-container" role="status" aria-live="polite"></div>
 <div class="settings-wrapper">
     <div class="settings-topbar">
         <a href="/app" class="settings-back" aria-label="Back to Videoscriber">
@@ -40,6 +41,51 @@
                 <button type="submit" class="btn btn-primary" id="profile-submit">Save changes</button>
             </div>
         </form>
+    </section>
+
+    <section class="settings-section">
+        <h2>Billing</h2>
+        {% if plan == 'plus' %}
+        <p class="section-sub">You're on Plus. Manage your subscription, update your card, or view invoices through Stripe.</p>
+        <div class="readonly-row">
+            <span class="label">Plan</span>
+            <span class="value">
+                <span class="status-chip status-verified" style="background: rgba(167,139,250,0.12); border-color: rgba(167,139,250,0.3); color: #A78BFA;">Plus</span>
+            </span>
+        </div>
+        {% if user.plan_activated_at %}
+        <div class="readonly-row">
+            <span class="label">Active since</span>
+            <span class="value">{{ user.plan_activated_at[:10] }}</span>
+        </div>
+        {% endif %}
+        <div class="readonly-row">
+            <span class="label">Included</span>
+            <span class="value">Unlimited transcriptions &middot; up to {{ plan_limits.max_file_mb }} MB per file</span>
+        </div>
+        <div class="settings-save" style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <button type="button" id="plan-manage-billing" class="btn btn-primary">Manage billing</button>
+            <a href="/upgrade" class="btn" style="text-decoration: none;">Change plan</a>
+        </div>
+        {% else %}
+        <p class="section-sub">You're on the Free plan. Upgrade for unlimited transcriptions, larger files, permanent storage, and the AI assistant.</p>
+        <div class="readonly-row">
+            <span class="label">Plan</span>
+            <span class="value"><span class="status-chip">Free</span></span>
+        </div>
+        <div class="readonly-row">
+            <span class="label">This month</span>
+            <span class="value">{{ plan_used }} of {{ plan_limits.monthly_limit }} transcriptions</span>
+        </div>
+        <div class="readonly-row">
+            <span class="label">File size</span>
+            <span class="value">Up to {{ plan_limits.max_file_mb }} MB per file</span>
+        </div>
+        <div class="settings-save" style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <a href="/upgrade" id="plan-upgrade-quick" class="btn btn-primary" style="text-decoration: none;">Upgrade to Plus &mdash; $29/mo</a>
+            <a href="/upgrade" class="btn" style="text-decoration: none;">See all options</a>
+        </div>
+        {% endif %}
     </section>
 
     <section class="settings-section">
@@ -135,8 +181,13 @@ Videoscriber &middot; https://videoscriber.ai">{{ user.email_signature or '' }}<
 
     <section class="settings-section">
         <h2>Account</h2>
-        <p class="section-sub">Read-only details about your account. Phone number is the primary identifier for sign-in.</p>
+        <p class="section-sub">Read-only details about your account. These are the identifiers we use to sign you in.</p>
+        {% if user.email %}
+        <div class="readonly-row"><span class="label">Email</span><span class="value">{{ user.email }}</span></div>
+        {% endif %}
+        {% if user.phone %}
         <div class="readonly-row"><span class="label">Phone</span><span class="value">{{ user.phone }}</span></div>
+        {% endif %}
         <div class="readonly-row"><span class="label">Account ID</span><span class="value">{{ user.user_id[:8] }}…</span></div>
     </section>
 
@@ -163,6 +214,7 @@ Videoscriber &middot; https://videoscriber.ai">{{ user.email_signature or '' }}<
         </p>
     </section>
 </div>
+<script type="module" src="/static/billing.js"></script>
 <script>
 (() => {
     // Email signature form
