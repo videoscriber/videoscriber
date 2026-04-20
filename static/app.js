@@ -132,32 +132,65 @@ function showPdfUpgradeNudge() {
       <h3>PDF export is a Plus feature</h3>
       <p>Download a beautifully formatted PDF with the meeting summary on the cover, speaker labels, and the full transcript — ready to share or archive.</p>
       <div class="plus-nudge-actions">
-        <button type="button" class="btn-ghost" data-act="txt">Download plain text</button>
+        <button type="button" class="btn-ghost" data-act="md">Download Markdown instead</button>
         <a href="/upgrade" class="btn-primary">Upgrade to Plus</a>
       </div>
     </div>`;
   modal.addEventListener('click', (e) => {
     if (e.target === modal) modal.hidden = true;
-    if (e.target.dataset.act === 'txt') {
+    if (e.target.dataset.act === 'md') {
       modal.hidden = true;
-      window.location.href = `/api/transcriptions/${activeJobId}/download/txt`;
+      window.location.href = `/api/transcriptions/${activeJobId}/download/md`;
     }
   });
   document.body.appendChild(modal);
 }
 
-btnDownload.addEventListener('click', async () => {
-  if (!activeJobId) return;
-  try {
-    const res = await fetch('/api/config');
-    const data = await res.json();
-    if ((data.plan?.tier || 'free') === 'plus') {
-      downloadPdf();
-    } else {
+const downloadDropdown = document.getElementById('download-menu-dropdown');
+
+function closeDownloadMenu() {
+  if (!downloadDropdown) return;
+  downloadDropdown.hidden = true;
+  btnDownload.setAttribute('aria-expanded', 'false');
+}
+function openDownloadMenu() {
+  if (!downloadDropdown || btnDownload.disabled) return;
+  downloadDropdown.hidden = false;
+  btnDownload.setAttribute('aria-expanded', 'true');
+}
+
+btnDownload.addEventListener('click', (e) => {
+  if (btnDownload.disabled) return;
+  e.stopPropagation();
+  downloadDropdown.hidden ? openDownloadMenu() : closeDownloadMenu();
+});
+
+document.addEventListener('click', (e) => {
+  if (!downloadDropdown || downloadDropdown.hidden) return;
+  if (!downloadDropdown.contains(e.target) && e.target !== btnDownload) closeDownloadMenu();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && downloadDropdown && !downloadDropdown.hidden) closeDownloadMenu();
+});
+
+downloadDropdown?.addEventListener('click', async (e) => {
+  const opt = e.target.closest('.download-option');
+  if (!opt || !activeJobId) return;
+  closeDownloadMenu();
+  const fmt = opt.dataset.format;
+  if (fmt === 'md') {
+    window.location.href = `/api/transcriptions/${activeJobId}/download/md`;
+    return;
+  }
+  if (fmt === 'pdf') {
+    try {
+      const res = await fetch('/api/config');
+      const data = await res.json();
+      if ((data.plan?.tier || 'free') === 'plus') downloadPdf();
+      else showPdfUpgradeNudge();
+    } catch {
       showPdfUpgradeNudge();
     }
-  } catch {
-    showPdfUpgradeNudge();
   }
 });
 

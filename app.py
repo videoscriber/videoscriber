@@ -699,8 +699,8 @@ async def get_transcription(job_id: str, user: dict = Depends(auth.require_user)
 
 @app.get("/api/transcriptions/{job_id}/download/{fmt}")
 async def download_transcription(job_id: str, fmt: str, user: dict = Depends(auth.require_user)):
-    if fmt not in ("txt", "srt", "vtt", "pdf"):
-        raise HTTPException(400, "Format must be txt, srt, vtt, or pdf")
+    if fmt not in ("txt", "md", "srt", "vtt", "pdf"):
+        raise HTTPException(400, "Format must be txt, md, srt, vtt, or pdf")
 
     record = _require_owner(await db.get_transcription(job_id), user)
     if record["status"] != "done":
@@ -773,6 +773,76 @@ async def download_transcription(job_id: str, fmt: str, user: dict = Depends(aut
             content=pdf_bytes,
             headers={"Content-Disposition": disposition},
             media_type="application/pdf",
+        )
+
+    # --- Markdown: same structure as the PDF (title, metadata, recap,
+    #     speakers, full transcript) but in portable Markdown so users can
+    #     drop it into Notion/Obsidian/GitHub without losing structure. ---
+    if fmt == "md":
+        import json as _json
+        from datetime import datetime as _dt
+
+        segments_raw = _json.loads(record.get("transcript_segments_json") or "[]")
+
+        # Human-friendly metadata row: "April 20, 2026 · 28m 44s · 2 speakers"
+        created_label = ""
+        try:
+            dt = _dt.fromisoformat((record.get("created_at") or "").replace("Z", "+00:00"))
+            created_label = dt.strftime("%B %-d, %Y")
+        except Exception:
+            created_label = (record.get("created_at") or "")[:10]
+
+        duration_label = None
+        if record.get("duration_seconds"):
+            ds = int(record["duration_seconds"])
+            duration_label = (
+                f"{ds // 3600}h {(ds % 3600) // 60}m" if ds >= 3600
+                else f"{ds // 60}m {ds % 60}s"
+            )
+
+        speakers_seen: list[str] = []
+        for seg in segments_raw:
+            spk = (seg.get("speaker") or "").strip()
+            if spk and spk not in speakers_seen:
+                speakers_seen.append(spk)
+
+        meta_bits = [created_label]
+        if duration_label:
+            meta_bits.append(duration_label)
+        if speakers_seen:
+            meta_bits.append(f"{len(speakers_seen)} speaker" + ("s" if len(speakers_seen) != 1 else ""))
+
+        lines: list[str] = [f"# {record.get('filename') or 'Transcript'}", ""]
+        if any(meta_bits):
+            lines += [f"*{' · '.join(m for m in meta_bits if m)}*", ""]
+
+        recap = (record.get("recap") or "").strip()
+        if recap:
+            lines += ["## Meeting summary", "", recap, ""]
+
+        if speakers_seen:
+            lines += ["## Speakers", ""]
+            lines += [f"- {name}" for name in speakers_seen]
+            lines.append("")
+
+        lines += ["## Transcript", ""]
+        for seg in segments_raw:
+            total = int(seg.get("start") or 0)
+            hh, rem = divmod(total, 3600)
+            mm, ss = divmod(rem, 60)
+            ts = f"{hh:02d}:{mm:02d}:{ss:02d}" if hh else f"{mm:02d}:{ss:02d}"
+            spk = (seg.get("speaker") or "").strip()
+            text = (seg.get("text") or "").strip()
+            header = f"**{spk}** — `{ts}`" if spk else f"`{ts}`"
+            lines += [header, "", text, ""]
+
+        content = "\n".join(lines).rstrip() + "\n"
+        filename = f"{stem}.md"
+        disposition = f"attachment; filename=\"{filename}\"; filename*=UTF-8''{quote(filename)}"
+        return PlainTextResponse(
+            content,
+            headers={"Content-Disposition": disposition},
+            media_type="text/markdown; charset=utf-8",
         )
 
     # --- Plain text formats ---
