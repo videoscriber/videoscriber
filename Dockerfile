@@ -16,7 +16,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY app.py transcriber.py database.py auth.py auth_routes.py sms.py email_service.py \
-     chat_routes.py retrieval.py email_domains.py domain_routes.py ./
+     chat_routes.py retrieval.py email_domains.py domain_routes.py billing_routes.py ./
 COPY templates/ templates/
 COPY static/ static/
 
