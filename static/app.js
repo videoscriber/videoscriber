@@ -960,7 +960,7 @@ async function generateRecap(regenerate = false, guidance = '') {
 function populateRecapEditor(recap) {
   recap = recap || '';
   // Match "Subject: ..." or "**Subject:** ..." on its own line
-  const subjectRegex = /^(?:\*\*)?Subject(?:\s*[Ll]ine)?:?\*?\*?\s*(.+)$/m;
+  const subjectRegex = /^(?:\*\*)?Subject(?:\s*line)?:?\*?\*?\s*(.+)$/im;
   const subjectMatch = recap.match(subjectRegex);
   if (subjectMatch) {
     recapSubject.value = subjectMatch[1].trim();
