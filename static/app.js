@@ -840,13 +840,39 @@ function initModals() {
   const sidebarToggle = document.getElementById('sidebar-toggle');
   const themeToggle = document.getElementById('theme-toggle');
 
+  const sidebar = document.getElementById('sidebar');
+  const sidebarBackdrop = document.getElementById('sidebar-backdrop');
+
+  function openSidebar() {
+    sidebar.classList.add('open');
+    document.body.classList.add('sidebar-open');
+  }
+  function closeSidebar() {
+    sidebar.classList.remove('open');
+    document.body.classList.remove('sidebar-open');
+  }
+
   sidebarToggle.addEventListener('click', () => {
-    const sidebar = document.getElementById('sidebar');
     if (window.innerWidth <= 768) {
-      sidebar.classList.toggle('open');
+      sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
     } else {
       document.body.classList.toggle('sidebar-collapsed');
     }
+  });
+
+  // Tap anywhere on the backdrop closes the drawer (mobile only).
+  sidebarBackdrop?.addEventListener('click', closeSidebar);
+
+  // Tapping a list item should also close the drawer on phones so the
+  // transcript view is visible immediately.
+  sidebar.addEventListener('click', (e) => {
+    if (window.innerWidth > 768) return;
+    if (e.target.closest('.transcription-item')) closeSidebar();
+  });
+
+  // Reset state when the viewport grows back to desktop.
+  window.addEventListener('resize', () => {
+    if (window.innerWidth > 768) closeSidebar();
   });
 
   themeToggle.addEventListener('click', toggleTheme);

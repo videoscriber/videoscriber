@@ -510,3 +510,87 @@
   white-space: nowrap;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
+
+/* ============================================
+   RESPONSIVE — transcript view
+   ============================================ */
+@media (max-width: 768px) {
+  /* Tighter side padding so long text isn't pushed into a narrow column. */
+  .video-area { padding: 0.5rem 0.9rem 0.35rem; }
+  .transcript-header { padding: 0.45rem 0.9rem; }
+  .transcript-search { margin: 0.4rem 0.9rem; padding: 0.35rem 0.55rem; }
+  #transcript-content { padding: 0 0.9rem; }
+
+  /* Speakers bar stays single-line; chips scroll horizontally when there
+     are too many to fit. Hide the scrollbar itself so it looks intentional. */
+  .speakers-bar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 10px 0 14px;
+  }
+  .speakers-bar::-webkit-scrollbar { display: none; }
+  .speakers-bar-label { flex-shrink: 0; }
+  .speaker-chip { flex-shrink: 0; }
+
+  /* Single-row header: title (ellipsis) + pencil + Copy + Download + Recap.
+     Button labels collapse to icons; their text is preserved for screen
+     readers via an sr-only pattern so accessibility is unaffected. */
+  .transcript-title-row {
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.25rem;
+  }
+  .transcript-title-row h2 {
+    font-size: 1rem;
+    flex: 1 1 0;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .transcript-title-row .spacer { display: none; }
+
+  .transcript-buttons {
+    flex-wrap: nowrap;
+    gap: 0.3rem;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+  .transcript-buttons .btn-secondary,
+  .transcript-buttons .btn-primary {
+    padding: 0.4rem 0.5rem;
+    min-width: 2rem;
+    justify-content: center;
+  }
+  .transcript-buttons .btn-secondary span,
+  .transcript-buttons .btn-primary span {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  /* The chevron next to "Download" is redundant when only the icon shows. */
+  .download-menu .chev { display: none; }
+
+  /* Segment grid: timestamp + speaker pill stay on top row; text wraps below. */
+  .segment { flex-wrap: wrap; gap: 0.3rem 0.5rem; padding: 0.45rem 0.35rem; }
+  .segment-timestamp { width: auto; text-align: left; }
+  .segment-text { flex-basis: 100%; font-size: 0.85rem; }
+
+  /* Video frame can grow a little taller when there's no sidebar eating width. */
+  .video-container, .video-container video { max-height: 36vh; }
+}
+
+@media (max-width: 480px) {
+  /* Drop-down for Download opens left-aligned so it doesn't clip off-screen. */
+  .download-dropdown { right: auto; left: 0; }
+
+  /* Slightly smaller captions so they don't dominate a phone-sized frame. */
+  #preview-player::cue { font-size: 0.95rem; padding: 0.16em 0.5em; }
+}
