@@ -128,7 +128,7 @@
                     Plus plan
                 </div>
                 <div class="plan-widget-text">Unlimited transcriptions &middot; up to {{ plan_limits.max_file_mb }} MB</div>
-                <a href="/app/settings" class="plan-widget-link">Manage billing &rarr;</a>
+                <a href="#" id="plan-manage-billing" class="plan-widget-link">Manage billing &rarr;</a>
             </div>
             {% else %}
             {% set remaining = (plan_limits.monthly_limit - plan_used) if plan_limits.monthly_limit else 0 %}
@@ -346,6 +346,7 @@
 
     <script type="module" src="/static/app.js"></script>
     <script type="module" src="/static/assistant.js"></script>
+    <script type="module" src="/static/billing.js"></script>
     <script>
     // User menu dropdown (open/close + click-outside)
     (() => {
