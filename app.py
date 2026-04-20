@@ -310,6 +310,42 @@ async def gate_api_behind_session(request: Request, call_next):
     return await call_next(request)
 
 
+# Security response headers — required by the Zoom Marketplace review and good
+# practice on any public web app. Headers are set on every response; CSP is
+# intentionally permissive for our own inline scripts + Google Fonts so the
+# existing pages keep working. Tighten per-route later if needed.
+_SECURITY_HEADERS = {
+    "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "SAMEORIGIN",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Content-Security-Policy": (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://js.stripe.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data: https:; "
+        "media-src 'self' blob:; "
+        "connect-src 'self' https://api.stripe.com; "
+        "frame-src https://js.stripe.com https://hooks.stripe.com; "
+        "frame-ancestors 'self'; "
+        "base-uri 'self'; "
+        "form-action 'self' https://checkout.stripe.com https://billing.stripe.com"
+    ),
+    "Permissions-Policy": "camera=(), microphone=(self), geolocation=()",
+}
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    for header, value in _SECURITY_HEADERS.items():
+        # Don't clobber headers a route sets intentionally (e.g. a per-page CSP).
+        if header not in response.headers:
+            response.headers[header] = value
+    return response
+
+
 @app.get("/", response_class=HTMLResponse)
 async def landing(request: Request):
     if DESKTOP_MODE:
