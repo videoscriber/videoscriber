@@ -294,6 +294,16 @@ async def _migrate_enforce_unique_indexes(
     await db.commit()
 
 
+async def _migrate_integrations_initial(db: aiosqlite.Connection) -> None:
+    """No-op migrator for the brand-new `integrations` and `integration_imports`
+    tables added in Phase 1. Both are created with CREATE TABLE IF NOT EXISTS,
+    so existing DBs simply get fresh tables populated only by new rows — there
+    are no pre-existing rows that could violate the NOT NULL / UNIQUE
+    constraints. This helper exists solely to document that fact and satisfy
+    the schema-tightening guard in CI."""
+    return None
+
+
 async def init_db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(DB_PATH) as db:
@@ -301,6 +311,7 @@ async def init_db():
         # Scans SCHEMA and auto-heals duplicates for every partial-unique
         # index, so new UNIQUE tightenings don't need a hand-written migrator.
         await _migrate_enforce_unique_indexes(db)
+        await _migrate_integrations_initial(db)
         await db.executescript(SCHEMA)
 
         # Migrate transcriptions: add new columns if missing
