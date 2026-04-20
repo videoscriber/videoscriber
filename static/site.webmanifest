@@ -1,0 +1,15 @@
+{
+  "name": "Videoscriber",
+  "short_name": "Videoscriber",
+  "description": "AI meeting assistant that turns recordings into transcripts and recap emails.",
+  "start_url": "/app",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
+  "icons": [
+    { "src": "/static/brand/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/static/brand/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/static/brand/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
