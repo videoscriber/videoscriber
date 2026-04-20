@@ -90,6 +90,8 @@
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 5px; }
 
+html { overflow-x: hidden; }
+
 body {
   font-family: var(--font);
   font-size: 14px;
@@ -101,6 +103,7 @@ body {
   background-attachment: fixed;
   background-repeat: no-repeat;
   height: 100vh;
+  max-width: 100vw;
   overflow: hidden;
   display: grid;
   grid-template-rows: var(--topbar-height) 1fr;
@@ -245,6 +248,11 @@ input, textarea, button, select { font-family: inherit; font-size: inherit; }
   transition: transform var(--normal) var(--ease);
   z-index: 40;
 }
+
+/* Mobile-only brand inside the drawer. Hidden on desktop because the topbar
+   already shows the logo; on phones it replaces the topbar brand so the
+   search input has room to breathe in the header. */
+.sidebar-brand { display: none; }
 
 .sidebar-upload {
   padding: 0.75rem;
@@ -657,15 +665,59 @@ input, textarea, button, select { font-family: inherit; font-size: inherit; }
 }
 
 /* ============================================
-   RESPONSIVE
+   RESPONSIVE — tablet + phone
    ============================================ */
 @media (max-width: 768px) {
+  /* Sidebar becomes an overlay; main content takes the full width. */
   body { grid-template-columns: 1fr; grid-template-areas: "topbar" "main"; }
   .sidebar {
     position: fixed; left: 0; top: var(--topbar-height); bottom: 0;
-    width: var(--sidebar-width); z-index: 100;
+    width: min(var(--sidebar-width), 88vw); z-index: 100;
     transform: translateX(-100%);
     box-shadow: var(--shadow-lg);
   }
   .sidebar.open { transform: translateX(0); }
+
+  /* Dimmed backdrop so it's obvious the main area is inactive and tapping
+     anywhere outside the drawer closes it. */
+  .sidebar-backdrop {
+    position: fixed; inset: var(--topbar-height) 0 0 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 90;
+    opacity: 0; pointer-events: none;
+    transition: opacity var(--normal) var(--ease);
+  }
+  body.sidebar-open .sidebar-backdrop {
+    opacity: 1; pointer-events: auto;
+  }
+
+  /* Topbar: tighten horizontal layout, drop the ⌘K hint (no keyboard on mobile).
+     The topbar brand moves into the sidebar drawer on mobile, so the header
+     has more room for the search input. */
+  .topbar { padding: 0 0.55rem; gap: 0.45rem; }
+  .topbar-left { gap: 0.3rem; min-width: 0; }
+  .topbar-right { gap: 0.1rem; min-width: 0; flex-shrink: 0; }
+  .topbar-center { min-width: 0; flex: 1 1 0; }
+  .topbar-search { max-width: none; min-width: 0; }
+  .search-kbd { display: none; }
+  .topbar-left .brand { display: none; }
+
+  /* Brand shows at the top of the slide-in drawer instead. */
+  .sidebar-brand {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem 0.9rem;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .sidebar-brand .brand-logo-app { height: 26px; width: auto; max-width: 180px; }
+}
+
+@media (max-width: 480px) {
+  /* Smaller icons + shorter input on tight viewports. */
+  .topbar-search input { font-size: 0.75rem; padding-right: 0.55rem; }
+  .topbar-search input::placeholder { font-size: 0.72rem; }
+  .sidebar-toggle, .icon-btn { width: 1.85rem; height: 1.85rem; }
+  /* Keyboard-shortcut overlay isn't useful without a keyboard. */
+  #shortcuts-btn { display: none; }
 }
