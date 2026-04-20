@@ -83,6 +83,8 @@
     padding: 9px 16px;
     border-radius: 10px;
     border: 1px solid transparent;
+    white-space: nowrap;
+    flex-shrink: 0;
     transition: color 200ms ease, background 200ms ease, border-color 200ms ease;
 }
 .public-nav .nav-link:hover {
@@ -104,6 +106,8 @@
     align-items: center;
     gap: 6px;
     overflow: hidden;
+    white-space: nowrap;
+    flex-shrink: 0;
     box-shadow:
         inset 0 1px 0 rgba(255, 255, 255, 0.12),
         0 6px 20px -4px rgba(99, 102, 241, 0.5);
@@ -158,6 +162,32 @@
 }
 @media (max-width: 520px) {
     .public-footer-inner { grid-template-columns: 1fr; }
+}
+
+/* Public header fits the brand + nav on a phone screen. Buttons keep their
+   text on a single line (nowrap + flex-shrink:0 globally); at each
+   breakpoint we drop the least-essential element to make room. */
+@media (max-width: 640px) {
+    .public-header { padding: 12px 14px; gap: 6px; }
+    .public-nav { gap: 6px; flex-wrap: nowrap; }
+    .public-nav .nav-link { padding: 7px 10px; font-size: 13px; }
+    .public-nav .nav-cta { padding: 7px 12px; font-size: 13px; }
+    .public-theme-toggle { width: 32px; height: 32px; flex-shrink: 0; }
+    .brand-logo { height: 26px; }
+}
+@media (max-width: 480px) {
+    /* Drop the Download link on phones — it's in the footer and at /download.
+       Log in also hides here; users can log in from the Get-started flow or
+       the /login URL directly. This gives Get-started real breathing room. */
+    .public-nav .nav-link { display: none; }
+    .brand-logo { height: 24px; }
+    .public-footer { padding: 48px 20px 0; margin-top: 80px; }
+}
+@media (max-width: 360px) {
+    /* Tiniest phones: hide the theme toggle too, leaving only the logo and
+       Get-started CTA. Users can still toggle theme via the footer. */
+    .public-theme-toggle { display: none; }
+    .public-header { padding: 10px 12px; }
 }
 .footer-brand-col {
     display: flex;

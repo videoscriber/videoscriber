@@ -1175,6 +1175,239 @@
 }
 
 /* ============================================================================
+   MEET ENDER — dedicated section for the AI assistant selling point
+   ============================================================================ */
+.ender { position: relative; text-align: center; }
+.ender .section-title { margin-left: auto; margin-right: auto; }
+.ender .section-lead { margin-left: auto; margin-right: auto; max-width: 680px; }
+
+.ender-badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 14px;
+    margin-bottom: 18px;
+    border-radius: 999px;
+    border: 1px solid rgba(167, 139, 250, 0.35);
+    background: rgba(167, 139, 250, 0.08);
+    font-size: 11px; font-weight: 600;
+    letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--purple-light);
+}
+.ender-badge-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--purple-light);
+    box-shadow: 0 0 10px var(--purple-light);
+}
+
+.ender-grid {
+    margin-top: 56px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    text-align: left;
+}
+@media (max-width: 900px) { .ender-grid { grid-template-columns: 1fr; gap: 16px; } }
+
+.ender-feature {
+    padding: 32px 28px;
+    border: 1px solid var(--glass-border);
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-radius: 18px;
+    display: flex; flex-direction: column; gap: 14px;
+    transition: border-color 200ms var(--ease-out), background 200ms var(--ease-out);
+}
+.ender-feature:hover {
+    border-color: var(--glass-border-hover);
+    background: var(--glass-bg-strong);
+}
+.ender-icon {
+    width: 44px; height: 44px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, rgba(167, 139, 250, 0.2), rgba(99, 102, 241, 0.15));
+    border: 1px solid rgba(167, 139, 250, 0.25);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--purple-light);
+}
+.ender-feature h3 {
+    font-size: 17px; font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--text);
+    margin: 0;
+}
+.ender-feature p {
+    font-size: 14px; line-height: 1.6;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+/* ============================================================================
+   INTEGRATIONS — Zoom / Google Meet / anywhere else
+   ============================================================================ */
+.integrations { text-align: center; }
+.integrations .section-title { margin-left: auto; margin-right: auto; }
+.integrations .section-lead { margin-left: auto; margin-right: auto; max-width: 680px; }
+
+.integration-grid {
+    margin-top: 48px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    text-align: left;
+}
+@media (max-width: 900px) { .integration-grid { grid-template-columns: 1fr; gap: 14px; } }
+
+.integration-card {
+    display: flex; flex-direction: column; gap: 10px;
+    padding: 24px 22px;
+    border: 1px solid var(--glass-border);
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-radius: 16px;
+    transition: border-color 200ms var(--ease-out), background 200ms var(--ease-out);
+}
+.integration-card:hover {
+    border-color: var(--glass-border-hover);
+    background: var(--glass-bg-strong);
+}
+.integration-logo {
+    width: 52px; height: 52px;
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 4px;
+}
+.integration-zoom { background: rgba(45, 140, 255, 0.12); color: #4A90E2; border: 1px solid rgba(45, 140, 255, 0.25); }
+.integration-meet { background: rgba(52, 168, 83, 0.12); color: #34a853; border: 1px solid rgba(52, 168, 83, 0.25); }
+.integration-any { background: rgba(167, 139, 250, 0.12); color: var(--purple-light); border: 1px solid rgba(167, 139, 250, 0.25); }
+.integration-card h4 {
+    font-size: 16px; font-weight: 700; color: var(--text);
+    margin: 0;
+}
+.integration-card p {
+    font-size: 13.5px; line-height: 1.55;
+    color: var(--text-secondary);
+    margin: 0;
+}
+.integrations-footnote {
+    margin-top: 32px;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+.integrations-footnote a {
+    color: var(--purple-light);
+    text-decoration: none;
+    font-weight: 600;
+}
+.integrations-footnote a:hover { text-decoration: underline; }
+
+/* ============================================================================
+   RESPONSIVE — tablet + phone
+   Consolidates the phone-specific rules. The existing per-component
+   queries above handle grid collapse at wider breakpoints; this block
+   tunes type sizes, padding, and edge-cases for real phones (≤640
+   tablet-portrait, ≤480 phone, ≤360 very small).
+   ============================================================================ */
+@media (max-width: 640px) {
+    /* Section + hero padding: tighter so content isn't pushed into a narrow
+       column between large gutters. */
+    .section { padding: 72px 20px; }
+    .hero {
+        padding: 40px 20px 48px;
+        min-height: calc(100vh - 72px);
+    }
+    .hero-chip { font-size: 12px; padding: 6px 12px; gap: 8px; margin-bottom: 24px; }
+    .hero-title { margin-bottom: 20px; max-width: 18ch; }
+    .hero-lead { margin-bottom: 32px; font-size: 16px; }
+    .hero-scroll { display: none; }
+
+    /* Stats card: 2 columns on phones, smaller values, tighter padding. */
+    .stat { padding: 22px 18px; gap: 6px; }
+    .stat-value { font-size: 24px; }
+    .stat-label { font-size: 12px; }
+    .stats { padding: 28px 20px; }
+
+    /* Section title + lead shrink for phones without losing rhythm. */
+    .section-kicker { margin-bottom: 16px; font-size: 11px; }
+    .section-title { margin-bottom: 16px; }
+    .section-lead { font-size: 15px; }
+
+    /* Product preview: copy above, mockup below, no extreme gaps. */
+    .preview { gap: 36px; }
+    .preview-copy .feature-list { margin-top: 24px; gap: 12px; }
+    .mockup-filename { font-size: 11px; }
+    .mockup-body { padding: 18px 4px 4px; }
+    .mockup-caption { font-size: 12px; padding: 10px 12px; gap: 10px; }
+    .mockup-recap { padding: 14px 16px; }
+
+    /* Feature cards: reduce padding, feature icon, and stat heights. */
+    .feature-card { padding: 24px 20px; }
+    .feature-icon { width: 40px; height: 40px; margin-bottom: 16px; }
+
+    /* How-it-works steps already single-column at 900; tighten padding. */
+    .step { padding: 24px; }
+
+    /* Use cases: 2 columns read fine at phone width with tighter padding. */
+    .use-cases { gap: 12px; }
+    .use-case { padding: 20px 16px; }
+    .use-case h4 { font-size: 15px; }
+    .use-case p { font-size: 13px; }
+
+    /* Audience panels: full-width stacked, tighter padding, code-block scrolls. */
+    .audience-panel { padding: 28px 22px; }
+    .audience-panel h3 { font-size: 22px; }
+    .panel-highlights { gap: 14px; }
+    .code-block {
+        font-size: 12px;
+        padding: 14px 16px;
+        overflow-x: auto;
+        white-space: pre;
+    }
+
+    /* FAQ accordions fit comfortably on a phone with smaller summaries. */
+    .faq-item summary { padding: 16px 44px 16px 18px; font-size: 15px; }
+    .faq-item summary::after { right: 18px; width: 12px; height: 12px; }
+    .faq-item .faq-body { padding: 0 18px 18px; font-size: 14px; }
+    .faq-list { margin-top: 32px; }
+
+    /* Final CTA shrinks gracefully. */
+    .final-cta { margin: 56px 16px 80px; padding: 48px 24px; border-radius: 24px; }
+    .final-cta p { font-size: 15px; margin-bottom: 28px; }
+    .final-cta-note { font-size: 11px; margin-top: 16px; }
+
+    /* CTAs wrap to full-width buttons stacked vertically. */
+    .hero-cta { flex-direction: column; width: 100%; max-width: 320px; }
+    .hero-cta .btn-glow,
+    .hero-cta .btn-glass { width: 100%; justify-content: center; }
+    .btn-glow { padding: 14px 24px; font-size: 14px; }
+    .btn-glass { padding: 14px 24px; font-size: 14px; }
+}
+
+@media (max-width: 480px) {
+    .section { padding: 56px 16px; }
+    .hero { padding: 32px 16px 40px; }
+    .hero-chip { flex-wrap: wrap; justify-content: center; padding: 6px 14px; gap: 6px; }
+    .hero-chip a { width: 100%; text-align: center; margin-top: 2px; }
+
+    /* Stats go single-column on very narrow phones so values don't wrap. */
+    .stats-grid { grid-template-columns: 1fr; }
+
+    /* Use-cases: single column on very narrow phones. */
+    .use-cases { grid-template-columns: 1fr; }
+
+    /* Final CTA title tightens further. */
+    .final-cta h2 { font-size: 30px; }
+}
+
+@media (max-width: 360px) {
+    /* Keep everything readable on the smallest modern phones. */
+    .hero-title { font-size: 38px; letter-spacing: -0.02em; }
+    .section-title { font-size: 26px; }
+    .stat-value { font-size: 22px; }
+    .feature-card h3 { font-size: 16px; }
+}
+
+/* ============================================================================
    REDUCED MOTION
    ============================================================================ */
 @media (prefers-reduced-motion: reduce) {
