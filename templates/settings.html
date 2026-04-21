@@ -569,6 +569,7 @@ Videoscriber &middot; https://videoscriber.ai">{{ user.email_signature or '' }}<
                   <h3 id="picker-title">Import a recording</h3>
                   <button class="modal-close" aria-label="Close">&times;</button>
                 </div>
+                <div class="picker-range" id="picker-range"></div>
                 <div id="picker-body" class="picker-body">Loading…</div>
               </div>`;
             modal.addEventListener('mousedown', (e) => {
@@ -580,30 +581,57 @@ Videoscriber &middot; https://videoscriber.ai">{{ user.email_signature or '' }}<
         modal.hidden = false;
         const title = modal.querySelector('#picker-title');
         const body = modal.querySelector('#picker-body');
+        const rangeEl = modal.querySelector('#picker-range');
         title.textContent = provider === 'zoom' ? 'Import from Zoom' : 'Import a recording';
-        body.innerHTML = '<div class="picker-loading">Loading your recordings…</div>';
 
-        try {
-            const res = await fetch(`/api/integrations/${provider}/recordings`);
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({}));
-                body.innerHTML = `<div class="picker-empty">Could not load recordings: ${escapeHtml(err.detail || 'unknown error')}</div>`;
-                return;
+        // Default: let the server pick its own window (6 months for Zoom).
+        // Advanced: user picks from/to via the inline inputs below.
+        const today = new Date().toISOString().slice(0, 10);
+        const sixMonthsAgo = new Date(Date.now() - 180 * 86400 * 1000).toISOString().slice(0, 10);
+        rangeEl.innerHTML = `
+          <label>From <input type="date" id="picker-from" value="${sixMonthsAgo}"></label>
+          <label>To <input type="date" id="picker-to" value="${today}"></label>
+          <button type="button" class="btn" id="picker-reload">Reload</button>`;
+        rangeEl.querySelector('#picker-reload').addEventListener('click', () => loadRecordings());
+
+        async function loadRecordings() {
+            body.innerHTML = '<div class="picker-loading">Loading your recordings…</div>';
+            const from = rangeEl.querySelector('#picker-from').value;
+            const to = rangeEl.querySelector('#picker-to').value;
+            const qs = new URLSearchParams();
+            if (from) qs.set('from', from);
+            if (to) qs.set('to', to);
+            try {
+                const res = await fetch(`/api/integrations/${provider}/recordings?${qs}`);
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    body.innerHTML = `<div class="picker-empty">Could not load recordings: ${escapeHtml(err.detail || 'unknown error')}</div>`;
+                    return;
+                }
+                const data = await res.json();
+                if (!data.items?.length) {
+                    body.innerHTML = `<div class="picker-empty">
+                        No cloud recordings found in this window.
+                        <br><small>Try widening the date range above, or check that Cloud Recording is enabled on your Zoom account.</small>
+                      </div>`;
+                    return;
+                }
+                body.innerHTML = data.items.map(it => `
+                  <div class="picker-row" data-uuid="${escapeHtml(it.uuid)}">
+                    <div class="picker-meta">
+                      <div class="picker-topic">${escapeHtml(it.topic || 'Untitled recording')}</div>
+                      <div class="picker-sub">${escapeHtml(formatPickerDate(it.start_time))}${it.duration_minutes ? ' · ' + it.duration_minutes + ' min' : ''}${it.has_video ? '' : ' · audio only'}</div>
+                    </div>
+                    <button type="button" class="btn btn-primary" data-act="import-one">Import</button>
+                  </div>
+                `).join('');
+                wireImportButtons();
+            } catch (e) {
+                body.innerHTML = `<div class="picker-empty">Network error: ${escapeHtml(e.message || 'unknown')}</div>`;
             }
-            const data = await res.json();
-            if (!data.items?.length) {
-                body.innerHTML = '<div class="picker-empty">No cloud recordings found for this account.</div>';
-                return;
-            }
-            body.innerHTML = data.items.map(it => `
-              <div class="picker-row" data-uuid="${escapeHtml(it.uuid)}">
-                <div class="picker-meta">
-                  <div class="picker-topic">${escapeHtml(it.topic || 'Untitled recording')}</div>
-                  <div class="picker-sub">${escapeHtml(formatPickerDate(it.start_time))}${it.duration_minutes ? ' · ' + it.duration_minutes + ' min' : ''}${it.has_video ? '' : ' · audio only'}</div>
-                </div>
-                <button type="button" class="btn btn-primary" data-act="import-one">Import</button>
-              </div>
-            `).join('');
+        }
+
+        function wireImportButtons() {
             body.querySelectorAll('[data-act="import-one"]').forEach(btn => {
                 btn.addEventListener('click', async (e) => {
                     const row = e.target.closest('.picker-row');
@@ -624,9 +652,9 @@ Videoscriber &middot; https://videoscriber.ai">{{ user.email_signature or '' }}<
                     }
                 });
             });
-        } catch (e) {
-            body.innerHTML = `<div class="picker-empty">Network error: ${escapeHtml(e.message || 'unknown')}</div>`;
         }
+
+        await loadRecordings();
     }
 
     function formatPickerDate(iso) {
