@@ -500,7 +500,7 @@ Videoscriber &middot; https://videoscriber.ai">{{ user.email_signature or '' }}<
               </div>
               <div class="integration-row-actions">
                 ${connected
-                    ? `${card.provider === 'zoom'
+                    ? `${(card.provider === 'zoom' || card.provider === 'google_meet')
                           ? `<button type="button" class="btn btn-primary" data-act="import">Import now</button>`
                           : ''}
                        <button type="button" class="btn-danger-sm" data-act="disconnect">Disconnect</button>`
@@ -582,7 +582,8 @@ Videoscriber &middot; https://videoscriber.ai">{{ user.email_signature or '' }}<
         const title = modal.querySelector('#picker-title');
         const body = modal.querySelector('#picker-body');
         const rangeEl = modal.querySelector('#picker-range');
-        title.textContent = provider === 'zoom' ? 'Import from Zoom' : 'Import a recording';
+        const PROVIDER_NAMES = { zoom: 'Zoom', google_meet: 'Google Meet' };
+        title.textContent = `Import from ${PROVIDER_NAMES[provider] || 'recordings'}`;
 
         // Default: let the server pick its own window (6 months for Zoom).
         // Advanced: user picks from/to via the inline inputs below.

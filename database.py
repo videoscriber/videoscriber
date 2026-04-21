@@ -712,6 +712,15 @@ async def search_transcriptions(query: str, user_id: str | None = None) -> list[
 
 async def delete_transcription(id: str):
     async with aiosqlite.connect(DB_PATH) as db:
+        # Decouple any integration_imports row that pointed at this
+        # transcription so a manual re-import can create a fresh one, while
+        # keeping the permanent external_id dedupe for auto-sync (so we never
+        # resurrect a deleted recording automatically).
+        await db.execute(
+            "UPDATE integration_imports SET transcription_id = NULL "
+            "WHERE transcription_id = ?",
+            (id,),
+        )
         await db.execute("DELETE FROM transcriptions WHERE id = ?", (id,))
         await db.commit()
 
