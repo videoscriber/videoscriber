@@ -500,7 +500,10 @@ Videoscriber &middot; https://videoscriber.ai">{{ user.email_signature or '' }}<
               </div>
               <div class="integration-row-actions">
                 ${connected
-                    ? `<button type="button" class="btn-danger-sm" data-act="disconnect">Disconnect</button>`
+                    ? `${card.provider === 'zoom'
+                          ? `<button type="button" class="btn btn-primary" data-act="import">Import now</button>`
+                          : ''}
+                       <button type="button" class="btn-danger-sm" data-act="disconnect">Disconnect</button>`
                     : renderConnectButton(card)}
               </div>
             </div>
@@ -548,8 +551,90 @@ Videoscriber &middot; https://videoscriber.ai">{{ user.email_signature or '' }}<
             row.querySelector('[data-act="connect"]')?.addEventListener('click', () => connectOAuth(provider));
             row.querySelector('[data-act="connect-folder"]')?.addEventListener('click', () => connectLocalFolder());
             row.querySelector('[data-act="disconnect"]')?.addEventListener('click', () => disconnect(id));
+            row.querySelector('[data-act="import"]')?.addEventListener('click', () => openPicker(provider));
             row.querySelector('[data-act="mode"]')?.addEventListener('change', (e) => changeMode(id, e.target.value, autoAvailable));
         });
+    }
+
+    // ----- Picker modal (shared by OAuth providers) -----
+    async function openPicker(provider) {
+        let modal = document.getElementById('integration-picker');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'integration-picker';
+            modal.className = 'modal-overlay';
+            modal.innerHTML = `
+              <div class="modal-dialog picker-dialog">
+                <div class="modal-header">
+                  <h3 id="picker-title">Import a recording</h3>
+                  <button class="modal-close" aria-label="Close">&times;</button>
+                </div>
+                <div id="picker-body" class="picker-body">Loading…</div>
+              </div>`;
+            modal.addEventListener('mousedown', (e) => {
+                if (e.target === modal) modal.hidden = true;
+            });
+            modal.querySelector('.modal-close').addEventListener('click', () => modal.hidden = true);
+            document.body.appendChild(modal);
+        }
+        modal.hidden = false;
+        const title = modal.querySelector('#picker-title');
+        const body = modal.querySelector('#picker-body');
+        title.textContent = provider === 'zoom' ? 'Import from Zoom' : 'Import a recording';
+        body.innerHTML = '<div class="picker-loading">Loading your recordings…</div>';
+
+        try {
+            const res = await fetch(`/api/integrations/${provider}/recordings`);
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                body.innerHTML = `<div class="picker-empty">Could not load recordings: ${escapeHtml(err.detail || 'unknown error')}</div>`;
+                return;
+            }
+            const data = await res.json();
+            if (!data.items?.length) {
+                body.innerHTML = '<div class="picker-empty">No cloud recordings found for this account.</div>';
+                return;
+            }
+            body.innerHTML = data.items.map(it => `
+              <div class="picker-row" data-uuid="${escapeHtml(it.uuid)}">
+                <div class="picker-meta">
+                  <div class="picker-topic">${escapeHtml(it.topic || 'Untitled recording')}</div>
+                  <div class="picker-sub">${escapeHtml(formatPickerDate(it.start_time))}${it.duration_minutes ? ' · ' + it.duration_minutes + ' min' : ''}${it.has_video ? '' : ' · audio only'}</div>
+                </div>
+                <button type="button" class="btn btn-primary" data-act="import-one">Import</button>
+              </div>
+            `).join('');
+            body.querySelectorAll('[data-act="import-one"]').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const row = e.target.closest('.picker-row');
+                    const uuid = row.dataset.uuid;
+                    btn.disabled = true; btn.textContent = 'Importing…';
+                    const body2 = new URLSearchParams({ recording_uuid: uuid });
+                    const res2 = await fetch(`/api/integrations/${provider}/import`, {
+                        method: 'POST', body: body2,
+                    });
+                    if (res2.ok) {
+                        btn.textContent = 'Queued ✓';
+                        btn.classList.remove('btn-primary');
+                        setTimeout(() => { modal.hidden = true; window.location.href = '/app'; }, 900);
+                    } else {
+                        const err = await res2.json().catch(() => ({}));
+                        btn.disabled = false; btn.textContent = 'Import';
+                        showError(err.detail || 'Import failed');
+                    }
+                });
+            });
+        } catch (e) {
+            body.innerHTML = `<div class="picker-empty">Network error: ${escapeHtml(e.message || 'unknown')}</div>`;
+        }
+    }
+
+    function formatPickerDate(iso) {
+        if (!iso) return '';
+        try {
+            const d = new Date(iso);
+            return d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+        } catch { return iso.slice(0, 10); }
     }
 
     async function connectOAuth(provider) {
@@ -626,6 +711,39 @@ Videoscriber &middot; https://videoscriber.ai">{{ user.email_signature or '' }}<
         el.textContent = s == null ? '' : String(s);
         return el.innerHTML;
     }
+
+    // After OAuth redirects the user back to /app/settings, surface the
+    // outcome as a status bubble on top of the Integrations section, then
+    // strip the query params so a page refresh doesn't replay the message.
+    (function handleOAuthReturn() {
+        const params = new URLSearchParams(window.location.search);
+        const provider = params.get('integration');
+        const status = params.get('status');
+        if (!provider || !status) return;
+        const names = { zoom: 'Zoom', google_meet: 'Google Meet' };
+        const label = names[provider] || provider;
+        const msgs = {
+            connected: `${label} connected. Click "Import now" to browse your recordings.`,
+            cancelled: `${label} connection cancelled.`,
+            error: `${label} connection failed. Try again.`,
+        };
+        const text = msgs[status];
+        if (text) {
+            if (status === 'connected') {
+                const ok = document.createElement('div');
+                ok.className = 'settings-success active';
+                ok.textContent = text;
+                ok.style.marginBottom = '8px';
+                document.getElementById('integrations-section').prepend(ok);
+                setTimeout(() => ok.classList.remove('active'), 6000);
+            } else {
+                showError(text);
+            }
+        }
+        // Clear the query without reloading so a subsequent refresh is clean.
+        const clean = window.location.pathname + window.location.hash;
+        window.history.replaceState({}, document.title, clean);
+    })();
 
     render();
 })();

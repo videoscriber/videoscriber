@@ -16,17 +16,22 @@ Design notes
   INTEGRATIONS_TOKEN_KEY (base64-encoded Fernet key). Without the key
   `_encrypt`/`_decrypt` raise so we never silently write plaintext secrets.
 """
+import asyncio
 import base64
 import json
 import logging
 import os
 import uuid
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, Form, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Query
+from fastapi.responses import JSONResponse, RedirectResponse
 
 import auth
 import database as db
+import zoom_provider
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/integrations", tags=["integrations"])
@@ -43,8 +48,10 @@ PROVIDER_CATALOG = {
         "label": "Zoom",
         "description": "Import your Zoom Cloud Recordings.",
         "requires_oauth": True,
-        # Flipped on once ZOOM_CLIENT_ID is set in the env (Phase 2).
-        "configured": bool(os.getenv("ZOOM_CLIENT_ID")),
+        # True once every ZOOM_* env var is set — keeps the catalog in lock-step
+        # with zoom_provider.is_configured() so the Settings UI can't claim a
+        # provider is live while one of the OAuth knobs is still missing.
+        "configured": zoom_provider.is_configured(),
     },
     "google_meet": {
         "label": "Google Meet",
@@ -257,9 +264,9 @@ async def connect_local_folder(
 
 
 # ---------------------------------------------------------------------------
-# OAuth providers — Phase 2/3 wiring. For now these endpoints return a
-# friendly "not yet configured" 503 when the relevant env vars are missing
-# so the Settings UI can show a helpful message instead of a 500.
+# OAuth providers — Phase 2/3 wiring. The `connect` route returns a
+# `{redirect}` URL that the frontend navigates to; Zoom sends the user back
+# to the provider-specific `/oauth/callback` route below.
 # ---------------------------------------------------------------------------
 @router.post("/{provider}/connect")
 async def connect_oauth_provider(
@@ -276,5 +283,292 @@ async def connect_oauth_provider(
             f"{PROVIDER_CATALOG[provider]['label']} isn't set up yet. "
             "OAuth credentials still need to be configured on the server.",
         )
-    # Real OAuth handoff lands in Phase 2 (Zoom) and Phase 3 (Google).
+
+    if provider == "zoom":
+        return {"redirect": zoom_provider.build_authorize_url(user["user_id"])}
+
+    # Phase 3 adds google_meet.
     raise HTTPException(501, "OAuth flow not yet implemented for this provider.")
+
+
+# ---------------------------------------------------------------------------
+# Zoom OAuth callback + API surface
+# ---------------------------------------------------------------------------
+def _zoom_expiry(expires_in: int | None) -> str:
+    """Zoom returns a relative `expires_in` in seconds; we persist an absolute
+    ISO timestamp for the short-lived access token, subtracting a safety
+    margin so refreshes happen before the token technically expires."""
+    seconds = max(60, int(expires_in or 3600) - 60)
+    return (datetime.now(timezone.utc) + timedelta(seconds=seconds)).isoformat()
+
+
+async def _save_zoom_tokens(
+    integration_id: str,
+    user_id: str,
+    account_label: str | None,
+    token_bundle: dict,
+) -> None:
+    """Persist Zoom tokens encrypted + label + expiry. Shared by the
+    initial callback and the refresh path."""
+    await db.upsert_integration(
+        integration_id,
+        user_id,
+        "zoom",
+        account_label=account_label,
+        access_token_encrypted=_encrypt(token_bundle.get("access_token")),
+        refresh_token_encrypted=_encrypt(token_bundle.get("refresh_token")),
+        token_expires_at=_zoom_expiry(token_bundle.get("expires_in")),
+        sync_mode="manual",
+    )
+
+
+async def _fresh_zoom_access_token(row: dict) -> str:
+    """Return a usable Zoom access token. If the stored one is close to
+    expiry we refresh it first and write the new refresh+access pair back
+    to the integrations row (Zoom rotates refresh tokens on every refresh)."""
+    expires_at = row.get("token_expires_at")
+    needs_refresh = True
+    if expires_at:
+        try:
+            when = datetime.fromisoformat(expires_at)
+            needs_refresh = when <= datetime.now(timezone.utc) + timedelta(seconds=30)
+        except ValueError:
+            needs_refresh = True
+
+    if not needs_refresh:
+        return _decrypt(row["access_token_encrypted"])
+
+    refresh_token = _decrypt(row["refresh_token_encrypted"])
+    if not refresh_token:
+        raise HTTPException(400, "Zoom connection is missing a refresh token — reconnect.")
+    try:
+        bundle = await zoom_provider.refresh_access_token(refresh_token)
+    except Exception as e:
+        logger.warning("Zoom token refresh failed for integration %s: %s", row["id"], e)
+        raise HTTPException(401, "Zoom token refresh failed. Disconnect and reconnect Zoom.")
+
+    await _save_zoom_tokens(row["id"], row["user_id"], row.get("account_label"), bundle)
+    return bundle["access_token"]
+
+
+@router.get("/zoom/oauth/callback")
+async def zoom_oauth_callback(
+    code: str | None = Query(default=None),
+    state: str | None = Query(default=None),
+    error: str | None = Query(default=None),
+):
+    """Zoom redirects here after the user authorizes (or cancels). We verify
+    the state, exchange the code for tokens, fetch the user's email to label
+    the integration, and bounce back to Settings with a status indicator."""
+    # Unauthenticated entrypoint — the middleware exempts /api/integrations
+    # paths only when they don't require a session. Since this route is
+    # triggered by the browser redirect (no cookie reliability across
+    # domains), we re-authenticate using the signed state parameter.
+    if error:
+        logger.info("Zoom authorization declined: %s", error)
+        return RedirectResponse("/app/settings?integration=zoom&status=cancelled", status_code=303)
+    if not code or not state:
+        raise HTTPException(400, "Missing code or state from Zoom")
+
+    try:
+        user_id = zoom_provider.parse_state(state)
+    except ValueError as e:
+        logger.warning("Zoom OAuth state rejected: %s", e)
+        raise HTTPException(400, "Invalid or expired authorization state.")
+
+    try:
+        bundle = await zoom_provider.exchange_code(code)
+    except RuntimeError as e:
+        logger.warning("Zoom code exchange failed: %s", e)
+        return RedirectResponse(
+            "/app/settings?integration=zoom&status=error",
+            status_code=303,
+        )
+
+    access_token = bundle.get("access_token")
+    if not access_token:
+        raise HTTPException(502, "Zoom returned no access token")
+
+    try:
+        me = await zoom_provider.fetch_me(access_token)
+    except Exception as e:
+        logger.warning("Zoom /users/me failed: %s", e)
+        me = {}
+    account_label = me.get("email") or me.get("display_name") or "Zoom"
+
+    existing = await db.get_integration_by_provider(user_id, "zoom")
+    integration_id = existing["id"] if existing else str(uuid.uuid4())
+    await _save_zoom_tokens(integration_id, user_id, account_label, bundle)
+    logger.info("Zoom connected for user=%s, account=%s", user_id, account_label)
+
+    return RedirectResponse(
+        "/app/settings?integration=zoom&status=connected",
+        status_code=303,
+    )
+
+
+@router.get("/zoom/recordings")
+async def list_zoom_recordings(
+    from_date: str | None = Query(default=None, alias="from"),
+    to_date: str | None = Query(default=None, alias="to"),
+    next_page_token: str | None = Query(default=None),
+    user: dict = Depends(auth.require_user),
+):
+    """List the authenticated user's Zoom Cloud Recordings. Caller opens the
+    picker in Settings or the upload area and chooses which to import."""
+    row = await db.get_integration_by_provider(user["user_id"], "zoom")
+    if not row:
+        raise HTTPException(404, "Zoom is not connected for this account.")
+    access_token = await _fresh_zoom_access_token(row)
+    try:
+        data = await zoom_provider.list_recordings(
+            access_token,
+            from_date=from_date,
+            to_date=to_date,
+            next_page_token=next_page_token,
+        )
+    except httpx.HTTPStatusError as e:  # type: ignore[name-defined]  # imported lazily below
+        logger.warning("Zoom list_recordings failed: %s %s", e.response.status_code, e.response.text[:500])
+        raise HTTPException(502, "Zoom API error")
+
+    # Flatten to the fields the picker actually needs.
+    items = []
+    for meeting in data.get("meetings") or []:
+        primary = zoom_provider.pick_primary_video_file(meeting)
+        items.append({
+            "uuid": meeting.get("uuid"),
+            "topic": meeting.get("topic"),
+            "start_time": meeting.get("start_time"),
+            "duration_minutes": meeting.get("duration"),
+            "total_size": meeting.get("total_size"),
+            "has_video": bool(primary and (primary.get("file_type") or "").upper() == "MP4"),
+            "file_id": primary.get("id") if primary else None,
+        })
+    return {
+        "items": items,
+        "next_page_token": data.get("next_page_token") or None,
+    }
+
+
+@router.post("/zoom/import")
+async def import_zoom_recording(
+    background: BackgroundTasks,
+    recording_uuid: str = Form(...),
+    user: dict = Depends(auth.require_user),
+):
+    """Kick off an import of a specific Zoom recording. The download +
+    transcription run as a background task; the picker dismisses
+    immediately and the job appears in the user's library with its normal
+    'pending → transcribing → done' lifecycle."""
+    row = await db.get_integration_by_provider(user["user_id"], "zoom")
+    if not row:
+        raise HTTPException(404, "Zoom is not connected for this account.")
+    access_token = await _fresh_zoom_access_token(row)
+
+    # Fetch full meeting details so we have fresh download URLs.
+    import httpx  # local import keeps top-of-module tidy
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(
+            f"{zoom_provider.ZOOM_API_BASE}/meetings/{recording_uuid}/recordings",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+    if resp.status_code == 404:
+        raise HTTPException(404, "Recording not found on Zoom")
+    if resp.status_code != 200:
+        logger.warning("Zoom recording fetch failed: %s %s", resp.status_code, resp.text[:500])
+        raise HTTPException(502, "Zoom API error")
+    meeting = resp.json()
+
+    primary = zoom_provider.pick_primary_video_file(meeting)
+    if not primary:
+        raise HTTPException(400, "This recording has no playable video file.")
+
+    # Dedupe: same meeting uuid imported twice → surface the existing row.
+    import_id = str(uuid.uuid4())
+    inserted = await db.create_integration_import(
+        import_id,
+        row["id"],
+        user["user_id"],
+        external_id=str(recording_uuid),
+        external_title=meeting.get("topic"),
+        status="queued",
+    )
+    if not inserted:
+        existing = await db.list_integration_imports(row["id"], limit=50)
+        for item in existing:
+            if item["external_id"] == str(recording_uuid):
+                return {
+                    "status": "already_imported",
+                    "transcription_id": item.get("transcription_id"),
+                }
+        raise HTTPException(409, "Recording already imported but no record found.")
+
+    # Register a transcription row up-front so the UI can poll progress
+    # exactly like a normal upload. The background task fills in the video
+    # file and enqueues the transcription worker.
+    job_id = str(uuid.uuid4())
+    filename = f"{(meeting.get('topic') or 'Zoom recording').strip()}.mp4"[:255]
+    await db.create_transcription(job_id, filename, 0, user_id=user["user_id"])
+    await db.update_integration_import(import_id, transcription_id=job_id)
+
+    background.add_task(
+        _background_zoom_import,
+        job_id=job_id,
+        import_id=import_id,
+        file_meta=primary,
+        access_token_snapshot=access_token,
+        integration_row_snapshot=row,
+    )
+    return {"status": "queued", "transcription_id": job_id}
+
+
+async def _background_zoom_import(
+    *,
+    job_id: str,
+    import_id: str,
+    file_meta: dict,
+    access_token_snapshot: str,
+    integration_row_snapshot: dict,
+) -> None:
+    """Download the recording to uploads/, then hand off to the existing
+    transcription pipeline the same way a user upload would. Runs as a
+    FastAPI BackgroundTask so the /import response returns immediately."""
+    # Imports kept local so the routes module stays import-cheap at boot.
+    from pathlib import Path as _Path
+    from app import UPLOAD_DIR, _track_transcription, _run_with_semaphore  # type: ignore
+
+    dest = _Path(UPLOAD_DIR) / f"{job_id}.mp4"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        await db.update_integration_import(import_id, status="downloading")
+        try:
+            await zoom_provider.download_recording_file(
+                file_meta, access_token_snapshot, str(dest),
+            )
+        except Exception as e:
+            # If the snapshot token expired mid-download, try one refresh.
+            logger.info("Zoom download retry after: %s", e)
+            row = await db.get_integration(integration_row_snapshot["id"], integration_row_snapshot["user_id"])
+            if not row:
+                raise
+            fresh = await _fresh_zoom_access_token(row)
+            await zoom_provider.download_recording_file(file_meta, fresh, str(dest))
+
+        size = dest.stat().st_size
+        await db.update_transcription(job_id, video_path=str(dest), file_size=size)
+        await db.update_integration_import(import_id, status="done")
+
+        import asyncio as _asyncio
+        _track_transcription(_asyncio.create_task(_run_with_semaphore(job_id, dest)))
+    except Exception as e:
+        logger.exception("Zoom import failed for job %s", job_id)
+        await db.update_transcription(job_id, status="error",
+                                      error_message=f"Zoom import failed: {e}")
+        await db.update_integration_import(import_id, status="error",
+                                           error_message=str(e)[:500])
+
+
+# httpx used only by the /zoom/import inline request; exposed here so
+# `import httpx` at the module top-level doesn't create a hard dep when
+# the integrations surface is dormant (e.g. tests that don't touch Zoom).
+import httpx  # noqa: E402
