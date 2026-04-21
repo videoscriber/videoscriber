@@ -180,13 +180,19 @@ async def lifespan(app: FastAPI):
         logger.warning("Initial retention sweep failed: %s", e)
     retention_task = asyncio.create_task(_retention_loop())
 
-    # Zoom auto-sync poller — runs every ZOOM_POLL_INTERVAL_S when any user
-    # has sync_mode='auto'. No-op on desktop and if ZOOM_* env vars are missing.
+    # Auto-sync pollers — one per provider, scheduled when that provider's
+    # env vars are present. Skip on desktop (single-user, local app).
     zoom_sync_task = None
-    if not DESKTOP_MODE and integrations_routes.zoom_provider.is_configured():
-        zoom_sync_task = asyncio.create_task(integrations_routes.zoom_auto_sync_loop())
-        logger.info("Zoom auto-sync poller started (interval=%ds)",
-                    integrations_routes.ZOOM_POLL_INTERVAL_S)
+    google_sync_task = None
+    if not DESKTOP_MODE:
+        if integrations_routes.zoom_provider.is_configured():
+            zoom_sync_task = asyncio.create_task(integrations_routes.zoom_auto_sync_loop())
+            logger.info("Zoom auto-sync poller started (interval=%ds)",
+                        integrations_routes.ZOOM_POLL_INTERVAL_S)
+        if integrations_routes.google_provider.is_configured():
+            google_sync_task = asyncio.create_task(integrations_routes.google_auto_sync_loop())
+            logger.info("Google Meet auto-sync poller started (interval=%ds)",
+                        integrations_routes.GOOGLE_POLL_INTERVAL_S)
 
     logger.info("Videoscriber ready at http://%s:%s", HOST, PORT)
     try:
@@ -215,6 +221,8 @@ async def lifespan(app: FastAPI):
         retention_task.cancel()
         if zoom_sync_task:
             zoom_sync_task.cancel()
+        if google_sync_task:
+            google_sync_task.cancel()
 
 
 def _upload_job_id(path: Path) -> str:
