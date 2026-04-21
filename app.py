@@ -296,13 +296,18 @@ app.include_router(integrations_routes.router)
 
 @app.middleware("http")
 async def gate_api_behind_session(request: Request, call_next):
-    """Require a valid session for /api/* routes. /api/sync/* uses its own key auth;
-    /api/billing/webhook is Stripe → us and authenticates via signature verification."""
+    """Require a valid session for /api/* routes. Exceptions:
+      - /api/sync/*         — uses its own pre-shared key for desktop sync
+      - /api/billing/webhook — Stripe → us, signature-verified
+      - /api/integrations/*/oauth/callback — public landing for OAuth
+        redirects; authenticated via signed `state` param instead.
+    """
     path = request.url.path
     if (
         path.startswith("/api/")
         and not path.startswith("/api/sync")
         and path != "/api/billing/webhook"
+        and not (path.startswith("/api/integrations/") and path.endswith("/oauth/callback"))
     ):
         user = await auth.current_user(request)
         if not user:

@@ -1108,6 +1108,46 @@
     background: rgba(248, 113, 113, 0.08);
     border-color: rgba(248, 113, 113, 0.4);
 }
+
+/* Integration picker modal (Import from Zoom/Google Meet) */
+.picker-dialog {
+    width: 560px;
+    max-width: calc(100vw - 1rem);
+    max-height: calc(100vh - 2rem);
+    display: flex; flex-direction: column;
+}
+.picker-body {
+    padding: 4px 0;
+    overflow-y: auto;
+    max-height: 60vh;
+}
+.picker-loading,
+.picker-empty {
+    padding: 2rem 1.25rem;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+.picker-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+}
+.picker-row:last-child { border-bottom: none; }
+.picker-row:hover { background: var(--surface-1); }
+.picker-meta { flex: 1; min-width: 0; }
+.picker-topic {
+    font-size: 14px; font-weight: 600; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.picker-sub {
+    font-size: 12px; color: var(--text-muted); margin-top: 2px;
+}
+.picker-row .btn { flex-shrink: 0; font-size: 13px; padding: 7px 14px; }
+
 /* Narrow screens: stack actions below the meta so Connect isn't squeezed. */
 @media (max-width: 520px) {
     .integration-row-head { flex-direction: column; align-items: stretch; }
