@@ -41,6 +41,10 @@ ZOOM_API_BASE = "https://api.zoom.us/v2"
 # replayed days later, long enough to survive a slow MFA prompt on Zoom's side.
 STATE_MAX_AGE_S = 600  # 10 minutes
 
+# Webhook request-timestamp freshness window. Anything older than this gets
+# rejected to block replay attacks. Zoom's own retry window is a few minutes.
+WEBHOOK_MAX_AGE_S = 300  # 5 minutes
+
 
 def _env_required(key: str) -> str:
     value = os.getenv(key, "").strip()
@@ -252,6 +256,60 @@ def pick_primary_video_file(recording: dict[str, Any]) -> dict[str, Any] | None:
         return mp4[0]
     m4a = [f for f in files if (f.get("file_type") or "").upper() == "M4A"]
     return m4a[0] if m4a else None
+
+
+# ---------------------------------------------------------------------------
+# Webhooks — signature verification + URL validation response
+# ---------------------------------------------------------------------------
+def _webhook_secret() -> str:
+    token = os.getenv("ZOOM_WEBHOOK_SECRET_TOKEN", "").strip()
+    if not token:
+        raise RuntimeError(
+            "ZOOM_WEBHOOK_SECRET_TOKEN is not set — webhook verification cannot run."
+        )
+    return token
+
+
+def webhook_configured() -> bool:
+    return bool(os.getenv("ZOOM_WEBHOOK_SECRET_TOKEN", "").strip())
+
+
+def verify_webhook_signature(
+    *,
+    body: bytes,
+    signature_header: str | None,
+    timestamp_header: str | None,
+) -> None:
+    """Verify Zoom's signature per
+    https://developers.zoom.us/docs/api/webhooks/#headers
+    Signature is v0={HMAC-SHA256(v0:{timestamp}:{body}, secret_token)}.
+
+    Raises ValueError on any problem. Caller should turn that into a 401."""
+    if not signature_header or not timestamp_header:
+        raise ValueError("Missing Zoom webhook signature headers")
+    try:
+        ts = int(timestamp_header)
+    except ValueError:
+        raise ValueError("Invalid x-zm-request-timestamp")
+    if abs(int(time.time()) - ts) > WEBHOOK_MAX_AGE_S:
+        raise ValueError("Webhook timestamp outside freshness window")
+
+    secret = _webhook_secret().encode("utf-8")
+    message = f"v0:{ts}:{body.decode('utf-8', errors='replace')}".encode("utf-8")
+    digest = hmac.new(secret, message, hashlib.sha256).hexdigest()
+    expected = f"v0={digest}"
+    if not hmac.compare_digest(expected, signature_header):
+        raise ValueError("Zoom webhook signature mismatch")
+
+
+def build_url_validation_response(plain_token: str) -> dict[str, str]:
+    """Zoom's first webhook is an `endpoint.url_validation` event: they send
+    a plainToken and we must reply with the plainToken + an HMAC of it using
+    the secret token, proving we know the secret. This handshake reoccurs
+    whenever the webhook URL is edited."""
+    secret = _webhook_secret().encode("utf-8")
+    digest = hmac.new(secret, plain_token.encode("utf-8"), hashlib.sha256).hexdigest()
+    return {"plainToken": plain_token, "encryptedToken": digest}
 
 
 async def download_recording_file(
