@@ -26,7 +26,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse, RedirectResponse
 from starlette.requests import Request
 
@@ -253,16 +253,107 @@ async def connect_local_folder(
         raise HTTPException(400, "folder_path is required")
 
     integration_id = str(uuid.uuid4())
+    # Default to 'auto' for local folder — it's the expected UX. Unlike
+    # cloud providers, there's no plan-gating concern because the file lives
+    # on the user's own machine and the upload volume is their own disk.
     await db.upsert_integration(
         integration_id,
         user["user_id"],
         "local_folder",
         account_label=folder_path,
         settings_json=json.dumps({"folder_path": folder_path}),
-        sync_mode="manual",
+        sync_mode="auto",
     )
     row = await db.get_integration_by_provider(user["user_id"], "local_folder")
     return _public_integration(row)
+
+
+@router.post("/local_folder/upload")
+async def upload_local_folder_file(
+    integration_id: str = Form(...),
+    external_id: str = Form(...),
+    filename: str = Form(...),
+    file: UploadFile = File(...),
+    user: dict = Depends(auth.require_user),
+):
+    """Upload a video file discovered by the desktop folder watcher.
+
+    The Electron watcher sends:
+      - `integration_id`: which local_folder integration this came from
+      - `external_id`: stable dedupe key (the watcher uses `<abs_path>::<size>`)
+      - `filename`: display name for the transcription (usually basename)
+      - `file`: the MP4/MOV/etc. multipart body
+
+    We dedupe on (integration_id, external_id) so a file seen on every
+    poll cycle is only ever uploaded once. On dedupe hit we return the
+    existing transcription_id so the watcher can update its local state
+    without re-queuing."""
+    row = await db.get_integration(integration_id, user["user_id"])
+    if not row or row["provider"] != "local_folder":
+        raise HTTPException(404, "Local folder integration not found")
+    if row.get("sync_mode") == "off":
+        raise HTTPException(403, "Folder sync is off — turn it on in Settings.")
+
+    # Dedupe upfront: check if we've already seen this external_id.
+    existing = await db.list_integration_imports(integration_id, limit=200)
+    prior = next((it for it in existing if it["external_id"] == external_id), None)
+    if prior and prior.get("transcription_id"):
+        return {"status": "already_imported", "transcription_id": prior["transcription_id"]}
+
+    # Save the uploaded bytes to uploads/ — same path convention as the
+    # manual upload route so the rest of the pipeline doesn't care where
+    # the file came from.
+    from app import UPLOAD_DIR, _track_transcription, _run_with_semaphore  # noqa
+    safe_name = _safe_filename_upload(filename) or "recording.mp4"
+    job_id = str(uuid.uuid4())
+    ext = os.path.splitext(safe_name)[1].lower() or ".mp4"
+    dest = UPLOAD_DIR / f"{job_id}{ext}"
+
+    size = 0
+    with open(dest, "wb") as fh:
+        while chunk := await file.read(1024 * 1024):
+            size += len(chunk)
+            fh.write(chunk)
+
+    # Register the dedupe + transcription rows. If dedupe inserts fail now
+    # (two parallel watchers racing), we roll back the file write.
+    import_id = str(uuid.uuid4())
+    inserted = await db.create_integration_import(
+        import_id,
+        integration_id,
+        user["user_id"],
+        external_id=external_id,
+        external_title=safe_name,
+        status="downloading",
+    )
+    if not inserted:
+        dest.unlink(missing_ok=True)
+        existing = await db.list_integration_imports(integration_id, limit=200)
+        prior = next((it for it in existing if it["external_id"] == external_id), None)
+        if prior and prior.get("transcription_id"):
+            return {"status": "already_imported", "transcription_id": prior["transcription_id"]}
+        raise HTTPException(409, "Race with another watcher; try again shortly.")
+
+    await db.create_transcription(job_id, safe_name, size, user_id=user["user_id"])
+    await db.update_integration_import(import_id, transcription_id=job_id, status="done")
+    await db.update_transcription(job_id, video_path=str(dest))
+    await db.update_integration_sync_state(
+        integration_id,
+        last_sync_at=datetime.now(timezone.utc).isoformat(),
+        last_sync_status="ok",
+        last_sync_error=None,
+    )
+
+    _track_transcription(asyncio.create_task(_run_with_semaphore(job_id, dest)))
+    return {"status": "queued", "transcription_id": job_id, "import_id": import_id}
+
+
+def _safe_filename_upload(name: str) -> str:
+    """Reuse the same rules as app._safe_filename without a circular import."""
+    from pathlib import Path as _P
+    name = _P(name).name
+    name = "".join(c for c in name if c.isprintable() and c != '"')
+    return name.strip()[:255]
 
 
 # ---------------------------------------------------------------------------

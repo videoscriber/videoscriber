@@ -1,8 +1,9 @@
-const { app, BrowserWindow, dialog, Menu } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Menu } = require('electron');
 const { spawn, execSync } = require('child_process');
 const path = require('path');
 const net = require('net');
 const fs = require('fs');
+const folderWatcher = require('./folderWatcher');
 
 // Handle Squirrel events for Windows installer
 if (require('electron-squirrel-startup')) app.quit();
@@ -233,6 +234,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
     },
   });
 
@@ -273,10 +275,25 @@ function createWindow() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+// IPC: Settings → Integrations → Local folder uses this to open the
+// native directory picker. Returns the absolute path or null on cancel.
+ipcMain.handle('local-folder:pick', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Pick a folder for Videoscriber to watch',
+    buttonLabel: 'Watch folder',
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  if (result.canceled || !result.filePaths.length) return null;
+  return result.filePaths[0];
+});
+
 app.whenReady().then(async () => {
   try {
     await startPythonBackend();
     createWindow();
+    // Backend is up + window is open → start the folder watcher. Uses the
+    // same port the renderer loads so we talk to the same SQLite + user.
+    folderWatcher.start({ port: serverPort });
   } catch (err) {
     dialog.showErrorBox('Startup Error', err.message);
     app.quit();
@@ -284,6 +301,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
+  folderWatcher.stop();
   if (pythonProcess) {
     pythonProcess.kill();
     pythonProcess = null;
@@ -292,6 +310,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  folderWatcher.stop();
   if (pythonProcess) {
     pythonProcess.kill();
     pythonProcess = null;
