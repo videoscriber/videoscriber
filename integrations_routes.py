@@ -28,6 +28,7 @@ from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Query
 from fastapi.responses import JSONResponse, RedirectResponse
+from starlette.requests import Request
 
 import auth
 import database as db
@@ -500,47 +501,93 @@ async def import_zoom_recording(
     if not meeting:
         raise HTTPException(404, "Recording not found on Zoom")
 
+    result = await _queue_zoom_import(
+        user_id=user["user_id"],
+        integration_row=row,
+        meeting=meeting,
+        access_token=access_token,
+        background=background,
+    )
+    if result["status"] == "no_video":
+        raise HTTPException(400, "This recording has no playable video file.")
+    if result["status"] == "error":
+        raise HTTPException(409, result.get("error") or "Recording already imported.")
+    return result
+
+
+async def _queue_zoom_import(
+    *,
+    user_id: str,
+    integration_row: dict,
+    meeting: dict,
+    access_token: str,
+    background: BackgroundTasks | None,
+) -> dict:
+    """Shared queue helper. Picks the primary video file, dedupes against
+    integration_imports, creates a transcription stub so the UI can poll,
+    and schedules the actual download as a background task.
+
+    Returns a dict describing the outcome:
+      {status: 'queued', transcription_id, import_id}
+      {status: 'already_imported', transcription_id}
+      {status: 'no_video'}
+      {status: 'error', error}
+
+    Used by:
+      - POST /zoom/import   (manual picker action)
+      - POST /zoom/webhook  (recording.completed event)
+      - _zoom_auto_sync_loop (background poller)
+    """
     primary = zoom_provider.pick_primary_video_file(meeting)
     if not primary:
-        raise HTTPException(400, "This recording has no playable video file.")
+        return {"status": "no_video"}
 
-    # Dedupe: same meeting uuid imported twice → surface the existing row.
+    recording_uuid = str(meeting.get("uuid") or "")
     import_id = str(uuid.uuid4())
     inserted = await db.create_integration_import(
         import_id,
-        row["id"],
-        user["user_id"],
-        external_id=str(recording_uuid),
+        integration_row["id"],
+        user_id,
+        external_id=recording_uuid,
         external_title=meeting.get("topic"),
         status="queued",
     )
     if not inserted:
-        existing = await db.list_integration_imports(row["id"], limit=50)
+        # Dedupe: meeting was previously imported. Return the old job id so
+        # callers can redirect to an already-in-progress transcription.
+        existing = await db.list_integration_imports(integration_row["id"], limit=50)
         for item in existing:
-            if item["external_id"] == str(recording_uuid):
+            if item["external_id"] == recording_uuid:
                 return {
                     "status": "already_imported",
                     "transcription_id": item.get("transcription_id"),
                 }
-        raise HTTPException(409, "Recording already imported but no record found.")
+        return {"status": "error", "error": "Recording already seen but no record found."}
 
-    # Register a transcription row up-front so the UI can poll progress
-    # exactly like a normal upload. The background task fills in the video
-    # file and enqueues the transcription worker.
     job_id = str(uuid.uuid4())
     filename = f"{(meeting.get('topic') or 'Zoom recording').strip()}.mp4"[:255]
-    await db.create_transcription(job_id, filename, 0, user_id=user["user_id"])
+    await db.create_transcription(job_id, filename, 0, user_id=user_id)
     await db.update_integration_import(import_id, transcription_id=job_id)
 
-    background.add_task(
-        _background_zoom_import,
+    coro_args = dict(
         job_id=job_id,
         import_id=import_id,
         file_meta=primary,
         access_token_snapshot=access_token,
-        integration_row_snapshot=row,
+        integration_row_snapshot=integration_row,
     )
-    return {"status": "queued", "transcription_id": job_id}
+    if background is not None:
+        background.add_task(_background_zoom_import, **coro_args)
+    else:
+        # Webhook + polling paths don't have a BackgroundTasks handle.
+        # Fire-and-forget with asyncio; exceptions are caught inside.
+        asyncio.create_task(_background_zoom_import(**coro_args))
+
+    return {
+        "status": "queued",
+        "transcription_id": job_id,
+        "import_id": import_id,
+    }
 
 
 async def _background_zoom_import(
@@ -589,7 +636,214 @@ async def _background_zoom_import(
                                            error_message=str(e)[:500])
 
 
-# httpx used only by the /zoom/import inline request; exposed here so
-# `import httpx` at the module top-level doesn't create a hard dep when
-# the integrations surface is dormant (e.g. tests that don't touch Zoom).
+# ---------------------------------------------------------------------------
+# Zoom webhook — real-time auto-sync trigger
+# ---------------------------------------------------------------------------
+# Exempted from the session middleware in app.py because Zoom calls us
+# unauthenticated; we verify the HMAC signature ourselves instead.
+@router.post("/zoom/webhook")
+async def zoom_webhook(request: Request):
+    """Handle `recording.completed` events from Zoom.
+
+    Zoom sends two kinds of requests:
+      1. `endpoint.url_validation` — a one-off handshake whenever the
+         webhook URL is set or changed. Must be answered with the
+         plainToken + HMAC-signed encryptedToken.
+      2. `recording.completed` — an actual recording finished processing.
+         We look up the matching integration by host email, check that
+         sync_mode is 'auto', and queue an import.
+    """
+    body = await request.body()
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except Exception:
+        raise HTTPException(400, "Invalid JSON body")
+
+    event = payload.get("event")
+
+    # URL validation: no signature header yet, Zoom proves the handshake
+    # by checking *our* response. Do it first and short-circuit.
+    if event == "endpoint.url_validation":
+        plain = (payload.get("payload") or {}).get("plainToken", "")
+        if not plain:
+            raise HTTPException(400, "Missing plainToken")
+        try:
+            return zoom_provider.build_url_validation_response(plain)
+        except RuntimeError as e:
+            logger.warning("Webhook not configured: %s", e)
+            raise HTTPException(503, "Webhook not configured on this server")
+
+    # Non-handshake events: verify Zoom's HMAC signature on the raw body.
+    try:
+        zoom_provider.verify_webhook_signature(
+            body=body,
+            signature_header=request.headers.get("x-zm-signature"),
+            timestamp_header=request.headers.get("x-zm-request-timestamp"),
+        )
+    except ValueError as e:
+        logger.warning("Zoom webhook signature rejected: %s", e)
+        raise HTTPException(401, "Invalid webhook signature")
+    except RuntimeError as e:
+        logger.warning("Webhook not configured: %s", e)
+        raise HTTPException(503, "Webhook not configured on this server")
+
+    if event != "recording.completed":
+        # Acknowledge-and-ignore anything else (Zoom sends a bunch of
+        # meeting.* events as users enable additional subscriptions).
+        return {"ok": True, "ignored": event}
+
+    obj = (payload.get("payload") or {}).get("object") or {}
+    host_email = (obj.get("host_email") or "").strip().lower()
+    if not host_email:
+        logger.info("recording.completed without host_email; skipping")
+        return {"ok": True, "skipped": "no_host_email"}
+
+    # Find the user whose Zoom connection matches this host. We stored the
+    # Zoom email in account_label at OAuth time, so this is a simple lookup
+    # with no extra API call.
+    import aiosqlite
+    async with aiosqlite.connect(db.DB_PATH) as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(
+            "SELECT * FROM integrations "
+            "WHERE provider=? AND lower(account_label)=? AND sync_mode='auto' "
+            "LIMIT 1",
+            ("zoom", host_email),
+        ) as cur:
+            row_raw = await cur.fetchone()
+    if not row_raw:
+        # Either no matching integration, or sync_mode is off/manual.
+        return {"ok": True, "skipped": "no_auto_sync_match"}
+    row = dict(row_raw)
+
+    try:
+        access_token = await _fresh_zoom_access_token(row)
+        await _queue_zoom_import(
+            user_id=row["user_id"],
+            integration_row=row,
+            meeting=obj,
+            access_token=access_token,
+            background=None,
+        )
+        await db.update_integration_sync_state(
+            row["id"],
+            last_sync_at=datetime.now(timezone.utc).isoformat(),
+            last_sync_status="ok",
+            last_sync_error=None,
+        )
+    except Exception as e:
+        logger.exception("Zoom webhook import failed for %s", row["id"])
+        await db.update_integration_sync_state(
+            row["id"],
+            last_sync_at=datetime.now(timezone.utc).isoformat(),
+            last_sync_status="error",
+            last_sync_error=str(e)[:500],
+        )
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Zoom polling worker — catches recordings webhooks may have missed, and
+# backfills for accounts where webhooks aren't configured yet.
+# ---------------------------------------------------------------------------
+ZOOM_POLL_INTERVAL_S = int(os.getenv("ZOOM_POLL_INTERVAL_S", "1800"))  # 30 min
+
+
+async def zoom_auto_sync_tick() -> dict:
+    """One pass of the Zoom auto-sync poller. Iterates every zoom
+    integration with sync_mode='auto', lists recordings newer than
+    last_sync_at, and queues imports for anything we haven't seen yet.
+
+    Returns a small stats dict for observability / log lines."""
+    import aiosqlite
+    stats = {"integrations_checked": 0, "queued": 0, "errors": 0}
+    async with aiosqlite.connect(db.DB_PATH) as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(
+            "SELECT * FROM integrations WHERE provider='zoom' AND sync_mode='auto'"
+        ) as cur:
+            rows = [dict(r) async for r in cur]
+
+    for row in rows:
+        stats["integrations_checked"] += 1
+        try:
+            access_token = await _fresh_zoom_access_token(row)
+            # Window: since last successful sync, back-off 10 min for clock
+            # skew. First-ever sync pulls the last 7 days so we don't flood
+            # the user with their entire backlog.
+            since_iso = row.get("last_sync_at")
+            now = datetime.now(timezone.utc)
+            if since_iso:
+                try:
+                    since_dt = datetime.fromisoformat(since_iso) - timedelta(minutes=10)
+                except ValueError:
+                    since_dt = now - timedelta(days=1)
+            else:
+                since_dt = now - timedelta(days=7)
+            from_date = since_dt.date().isoformat()
+            to_date = now.date().isoformat()
+
+            next_page = None
+            meetings_seen = 0
+            while True:
+                data = await zoom_provider.list_recordings(
+                    access_token,
+                    from_date=from_date,
+                    to_date=to_date,
+                    page_size=300,
+                    next_page_token=next_page,
+                )
+                for meeting in data.get("meetings") or []:
+                    meetings_seen += 1
+                    result = await _queue_zoom_import(
+                        user_id=row["user_id"],
+                        integration_row=row,
+                        meeting=meeting,
+                        access_token=access_token,
+                        background=None,
+                    )
+                    if result["status"] == "queued":
+                        stats["queued"] += 1
+                next_page = data.get("next_page_token") or None
+                if not next_page:
+                    break
+
+            await db.update_integration_sync_state(
+                row["id"],
+                last_sync_at=now.isoformat(),
+                last_sync_status="ok",
+                last_sync_error=None,
+            )
+            logger.info("Zoom auto-sync: integration=%s meetings=%d queued(new)=%s",
+                        row["id"], meetings_seen, stats["queued"])
+        except Exception as e:
+            stats["errors"] += 1
+            logger.warning("Zoom auto-sync failed for integration %s: %s", row["id"], e)
+            await db.update_integration_sync_state(
+                row["id"],
+                last_sync_at=datetime.now(timezone.utc).isoformat(),
+                last_sync_status="error",
+                last_sync_error=str(e)[:500],
+            )
+    return stats
+
+
+async def zoom_auto_sync_loop() -> None:
+    """Run zoom_auto_sync_tick every ZOOM_POLL_INTERVAL_S until cancelled.
+    Intended to be kicked off from app.py's lifespan."""
+    while True:
+        try:
+            await zoom_auto_sync_tick()
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.warning("Zoom auto-sync loop iteration failed: %s", e)
+        try:
+            await asyncio.sleep(ZOOM_POLL_INTERVAL_S)
+        except asyncio.CancelledError:
+            raise
+
+
+# httpx lives here for the /zoom/recordings error-handling reference; kept at
+# the bottom so the lazy-import comment from Phase 2 still reads naturally.
 import httpx  # noqa: E402

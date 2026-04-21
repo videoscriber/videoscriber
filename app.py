@@ -179,6 +179,15 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Initial retention sweep failed: %s", e)
     retention_task = asyncio.create_task(_retention_loop())
+
+    # Zoom auto-sync poller — runs every ZOOM_POLL_INTERVAL_S when any user
+    # has sync_mode='auto'. No-op on desktop and if ZOOM_* env vars are missing.
+    zoom_sync_task = None
+    if not DESKTOP_MODE and integrations_routes.zoom_provider.is_configured():
+        zoom_sync_task = asyncio.create_task(integrations_routes.zoom_auto_sync_loop())
+        logger.info("Zoom auto-sync poller started (interval=%ds)",
+                    integrations_routes.ZOOM_POLL_INTERVAL_S)
+
     logger.info("Videoscriber ready at http://%s:%s", HOST, PORT)
     try:
         yield
@@ -204,6 +213,8 @@ async def lifespan(app: FastAPI):
                     t.cancel()
                 await asyncio.gather(*_inflight_transcriptions, return_exceptions=True)
         retention_task.cancel()
+        if zoom_sync_task:
+            zoom_sync_task.cancel()
 
 
 def _upload_job_id(path: Path) -> str:
@@ -301,6 +312,7 @@ async def gate_api_behind_session(request: Request, call_next):
       - /api/billing/webhook — Stripe → us, signature-verified
       - /api/integrations/*/oauth/callback — public landing for OAuth
         redirects; authenticated via signed `state` param instead.
+      - /api/integrations/*/webhook — Zoom/Google → us, HMAC-verified.
     """
     path = request.url.path
     if (
@@ -308,6 +320,7 @@ async def gate_api_behind_session(request: Request, call_next):
         and not path.startswith("/api/sync")
         and path != "/api/billing/webhook"
         and not (path.startswith("/api/integrations/") and path.endswith("/oauth/callback"))
+        and not (path.startswith("/api/integrations/") and path.endswith("/webhook"))
     ):
         user = await auth.current_user(request)
         if not user:
