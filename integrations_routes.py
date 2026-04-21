@@ -459,25 +459,46 @@ async def import_zoom_recording(
     """Kick off an import of a specific Zoom recording. The download +
     transcription run as a background task; the picker dismisses
     immediately and the job appears in the user's library with its normal
-    'pending → transcribing → done' lifecycle."""
+    'pending → transcribing → done' lifecycle.
+
+    Implementation note: we re-find the meeting via /users/me/recordings
+    instead of /meetings/{uuid}/recordings. The per-meeting endpoint
+    requires `cloud_recording:read:list_recording_files`, while the list
+    endpoint only needs the `cloud_recording:read:list_user_recordings`
+    scope we already have. The list endpoint also returns fresh
+    download_urls, so there's no downside to the extra filtering."""
     row = await db.get_integration_by_provider(user["user_id"], "zoom")
     if not row:
         raise HTTPException(404, "Zoom is not connected for this account.")
     access_token = await _fresh_zoom_access_token(row)
 
-    # Fetch full meeting details so we have fresh download URLs.
-    import httpx  # local import keeps top-of-module tidy
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(
-            f"{zoom_provider.ZOOM_API_BASE}/meetings/{recording_uuid}/recordings",
-            headers={"Authorization": f"Bearer {access_token}"},
+    # Widen the date range to 2 years — the user already saw this recording
+    # in the picker so it exists somewhere in their account. One listing is
+    # usually enough; we paginate only if we don't find the UUID on page 1.
+    from datetime import date as _date, timedelta as _td
+    today = _date.today().isoformat()
+    two_years_ago = (_date.today() - _td(days=730)).isoformat()
+
+    meeting: dict | None = None
+    next_page: str | None = None
+    for _ in range(20):  # hard cap ~6000 meetings — generous
+        data = await zoom_provider.list_recordings(
+            access_token,
+            from_date=two_years_ago,
+            to_date=today,
+            page_size=300,
+            next_page_token=next_page,
         )
-    if resp.status_code == 404:
+        for m in data.get("meetings") or []:
+            if str(m.get("uuid")) == str(recording_uuid):
+                meeting = m
+                break
+        if meeting or not data.get("next_page_token"):
+            break
+        next_page = data["next_page_token"]
+
+    if not meeting:
         raise HTTPException(404, "Recording not found on Zoom")
-    if resp.status_code != 200:
-        logger.warning("Zoom recording fetch failed: %s %s", resp.status_code, resp.text[:500])
-        raise HTTPException(502, "Zoom API error")
-    meeting = resp.json()
 
     primary = zoom_provider.pick_primary_video_file(meeting)
     if not primary:
