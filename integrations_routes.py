@@ -32,6 +32,7 @@ from starlette.requests import Request
 
 import auth
 import database as db
+import google_provider
 import zoom_provider
 
 logger = logging.getLogger(__name__)
@@ -58,7 +59,7 @@ PROVIDER_CATALOG = {
         "label": "Google Meet",
         "description": "Import Meet recordings from your Google Drive.",
         "requires_oauth": True,
-        "configured": bool(os.getenv("GOOGLE_CLIENT_ID")),
+        "configured": google_provider.is_configured(),
     },
     "local_folder": {
         "label": "Local folder",
@@ -287,8 +288,9 @@ async def connect_oauth_provider(
 
     if provider == "zoom":
         return {"redirect": zoom_provider.build_authorize_url(user["user_id"])}
+    if provider == "google_meet":
+        return {"redirect": google_provider.build_authorize_url(user["user_id"])}
 
-    # Phase 3 adds google_meet.
     raise HTTPException(501, "OAuth flow not yet implemented for this provider.")
 
 
@@ -887,6 +889,423 @@ async def zoom_auto_sync_loop() -> None:
             logger.warning("Zoom auto-sync loop iteration failed: %s", e)
         try:
             await asyncio.sleep(ZOOM_POLL_INTERVAL_S)
+        except asyncio.CancelledError:
+            raise
+
+
+# ---------------------------------------------------------------------------
+# Google Meet integration — same OAuth → picker → import → poll pattern as
+# Zoom, using Drive as the recording store. Webhooks would use Drive Changes
+# push notifications (more setup overhead) — we stick with polling for now;
+# real-time can be layered on later.
+# ---------------------------------------------------------------------------
+GOOGLE_POLL_INTERVAL_S = int(os.getenv("GOOGLE_POLL_INTERVAL_S", "1800"))
+
+
+def _google_expiry(expires_in: int | None) -> str:
+    seconds = max(60, int(expires_in or 3600) - 60)
+    return (datetime.now(timezone.utc) + timedelta(seconds=seconds)).isoformat()
+
+
+async def _save_google_tokens(
+    integration_id: str,
+    user_id: str,
+    account_label: str | None,
+    token_bundle: dict,
+) -> None:
+    await db.upsert_integration(
+        integration_id,
+        user_id,
+        "google_meet",
+        account_label=account_label,
+        access_token_encrypted=_encrypt(token_bundle.get("access_token")),
+        refresh_token_encrypted=_encrypt(token_bundle.get("refresh_token")),
+        token_expires_at=_google_expiry(token_bundle.get("expires_in")),
+        sync_mode="manual",
+    )
+
+
+async def _fresh_google_access_token(row: dict) -> str:
+    expires_at = row.get("token_expires_at")
+    needs_refresh = True
+    if expires_at:
+        try:
+            when = datetime.fromisoformat(expires_at)
+            needs_refresh = when <= datetime.now(timezone.utc) + timedelta(seconds=30)
+        except ValueError:
+            needs_refresh = True
+
+    if not needs_refresh:
+        return _decrypt(row["access_token_encrypted"])
+
+    refresh_token = _decrypt(row["refresh_token_encrypted"])
+    if not refresh_token:
+        raise HTTPException(400, "Google connection is missing a refresh token — reconnect.")
+    try:
+        bundle = await google_provider.refresh_access_token(refresh_token)
+    except Exception as e:
+        logger.warning("Google token refresh failed for integration %s: %s", row["id"], e)
+        raise HTTPException(401, "Google token refresh failed. Disconnect and reconnect.")
+
+    await _save_google_tokens(row["id"], row["user_id"], row.get("account_label"), bundle)
+    return bundle["access_token"]
+
+
+@router.get("/google_meet/oauth/callback")
+async def google_oauth_callback(
+    code: str | None = Query(default=None),
+    state: str | None = Query(default=None),
+    error: str | None = Query(default=None),
+):
+    """Google redirects here after the consent screen. State-verifies the
+    user, exchanges the code, labels the integration with the Google
+    account's email, and bounces back to Settings with a status flag."""
+    if error:
+        logger.info("Google authorization declined: %s", error)
+        return RedirectResponse(
+            "/app/settings?integration=google_meet&status=cancelled",
+            status_code=303,
+        )
+    if not code or not state:
+        raise HTTPException(400, "Missing code or state from Google")
+
+    try:
+        user_id = google_provider.parse_state(state)
+    except ValueError as e:
+        logger.warning("Google OAuth state rejected: %s", e)
+        raise HTTPException(400, "Invalid or expired authorization state.")
+
+    try:
+        bundle = await google_provider.exchange_code(code)
+    except RuntimeError as e:
+        logger.warning("Google code exchange failed: %s", e)
+        return RedirectResponse(
+            "/app/settings?integration=google_meet&status=error",
+            status_code=303,
+        )
+
+    access_token = bundle.get("access_token")
+    if not access_token:
+        raise HTTPException(502, "Google returned no access token")
+
+    try:
+        userinfo = await google_provider.fetch_userinfo(access_token)
+    except Exception as e:
+        logger.warning("Google userinfo failed: %s", e)
+        userinfo = {}
+    account_label = userinfo.get("email") or userinfo.get("name") or "Google"
+
+    existing = await db.get_integration_by_provider(user_id, "google_meet")
+    integration_id = existing["id"] if existing else str(uuid.uuid4())
+    await _save_google_tokens(integration_id, user_id, account_label, bundle)
+    logger.info("Google Meet connected for user=%s, account=%s", user_id, account_label)
+
+    return RedirectResponse(
+        "/app/settings?integration=google_meet&status=connected",
+        status_code=303,
+    )
+
+
+@router.get("/google_meet/recordings")
+async def list_google_meet_recordings(
+    from_date: str | None = Query(default=None, alias="from"),
+    to_date: str | None = Query(default=None, alias="to"),
+    page_token: str | None = Query(default=None),
+    user: dict = Depends(auth.require_user),
+):
+    """List Meet recordings (MP4 files in the user's Drive 'Meet Recordings'
+    folder) matching the supplied date window."""
+    row = await db.get_integration_by_provider(user["user_id"], "google_meet")
+    if not row:
+        raise HTTPException(404, "Google Meet is not connected for this account.")
+    access_token = await _fresh_google_access_token(row)
+    try:
+        data = await google_provider.list_meet_recordings(
+            access_token,
+            from_date=from_date,
+            to_date=to_date,
+            page_token=page_token,
+        )
+    except httpx.HTTPStatusError as e:
+        logger.warning(
+            "Google Drive list failed: %s %s", e.response.status_code, e.response.text[:500]
+        )
+        raise HTTPException(502, "Google Drive API error")
+
+    # Shape for the picker. We reuse Zoom's picker payload shape so the
+    # frontend treats both providers uniformly.
+    items = []
+    for f in data.get("files") or []:
+        duration_ms = (f.get("videoMediaMetadata") or {}).get("durationMillis")
+        duration_min = None
+        if duration_ms:
+            try:
+                duration_min = round(int(duration_ms) / 60000)
+            except (TypeError, ValueError):
+                duration_min = None
+        items.append({
+            "uuid": f.get("id"),  # Drive file id; picker treats as opaque
+            "topic": f.get("name") or "Meet recording",
+            "start_time": f.get("createdTime"),
+            "duration_minutes": duration_min,
+            "total_size": f.get("size"),
+            "has_video": True,
+            "file_id": f.get("id"),
+        })
+    return {
+        "items": items,
+        "next_page_token": data.get("nextPageToken"),
+    }
+
+
+@router.post("/google_meet/import")
+async def import_google_meet_recording(
+    background: BackgroundTasks,
+    recording_uuid: str = Form(...),  # Drive file id
+    user: dict = Depends(auth.require_user),
+):
+    """Queue an import of a Meet recording by Drive file id. Background
+    task downloads the MP4 and hands it to the transcription pipeline."""
+    row = await db.get_integration_by_provider(user["user_id"], "google_meet")
+    if not row:
+        raise HTTPException(404, "Google Meet is not connected for this account.")
+    access_token = await _fresh_google_access_token(row)
+
+    # Fetch the file metadata so we have a fresh name + size for the
+    # transcription row's filename.
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.get(
+            f"{google_provider.DRIVE_API_BASE}/files/{recording_uuid}",
+            headers={"Authorization": f"Bearer {access_token}"},
+            params={"fields": "id,name,size,createdTime", "supportsAllDrives": "true"},
+        )
+    if resp.status_code == 404:
+        raise HTTPException(404, "Recording not found on Google Drive")
+    if resp.status_code != 200:
+        logger.warning("Google Drive fetch failed: %s %s", resp.status_code, resp.text[:500])
+        raise HTTPException(502, "Google Drive API error")
+    meta = resp.json()
+
+    result = await _queue_google_import(
+        user_id=user["user_id"],
+        integration_row=row,
+        file_meta=meta,
+        access_token=access_token,
+        background=background,
+        allow_reimport=True,
+    )
+    if result["status"] == "error":
+        raise HTTPException(409, result.get("error") or "Recording already imported.")
+    return result
+
+
+async def _queue_google_import(
+    *,
+    user_id: str,
+    integration_row: dict,
+    file_meta: dict,
+    access_token: str,
+    background: BackgroundTasks | None,
+    allow_reimport: bool = False,
+) -> dict:
+    """Mirror of _queue_zoom_import for Google Meet. Dedupes by Drive file
+    id. Same reimport semantics: auto-sync respects deletions permanently;
+    manual picker can re-import by suffixing the external_id."""
+    file_id = str(file_meta.get("id") or "")
+    if not file_id:
+        return {"status": "no_video"}
+
+    external_id = file_id
+    import_id = str(uuid.uuid4())
+    inserted = await db.create_integration_import(
+        import_id,
+        integration_row["id"],
+        user_id,
+        external_id=external_id,
+        external_title=file_meta.get("name"),
+        status="queued",
+    )
+    if not inserted:
+        existing = await db.list_integration_imports(integration_row["id"], limit=50)
+        prior = next(
+            (it for it in existing if it["external_id"].split("#", 1)[0] == file_id),
+            None,
+        )
+        if not prior:
+            return {"status": "error", "error": "Recording already seen but no record found."}
+        if prior.get("transcription_id"):
+            return {"status": "already_imported", "transcription_id": prior["transcription_id"]}
+        if not allow_reimport:
+            return {"status": "already_imported", "transcription_id": None}
+        external_id = f"{file_id}#reimport-{int(datetime.now(timezone.utc).timestamp())}"
+        inserted = await db.create_integration_import(
+            import_id,
+            integration_row["id"],
+            user_id,
+            external_id=external_id,
+            external_title=file_meta.get("name"),
+            status="queued",
+        )
+        if not inserted:
+            external_id = f"{external_id}-{uuid.uuid4().hex[:6]}"
+            await db.create_integration_import(
+                import_id,
+                integration_row["id"],
+                user_id,
+                external_id=external_id,
+                external_title=file_meta.get("name"),
+                status="queued",
+            )
+
+    job_id = str(uuid.uuid4())
+    filename = f"{(file_meta.get('name') or 'Meet recording').strip()}"
+    if not filename.lower().endswith(".mp4"):
+        filename = f"{filename}.mp4"
+    filename = filename[:255]
+    await db.create_transcription(job_id, filename, 0, user_id=user_id)
+    await db.update_integration_import(import_id, transcription_id=job_id)
+
+    coro_args = dict(
+        job_id=job_id,
+        import_id=import_id,
+        file_id=file_id,
+        access_token_snapshot=access_token,
+        integration_row_snapshot=integration_row,
+    )
+    if background is not None:
+        background.add_task(_background_google_import, **coro_args)
+    else:
+        asyncio.create_task(_background_google_import(**coro_args))
+
+    return {"status": "queued", "transcription_id": job_id, "import_id": import_id}
+
+
+async def _background_google_import(
+    *,
+    job_id: str,
+    import_id: str,
+    file_id: str,
+    access_token_snapshot: str,
+    integration_row_snapshot: dict,
+) -> None:
+    from pathlib import Path as _Path
+    from app import UPLOAD_DIR, _track_transcription, _run_with_semaphore  # type: ignore
+
+    dest = _Path(UPLOAD_DIR) / f"{job_id}.mp4"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        await db.update_integration_import(import_id, status="downloading")
+        try:
+            await google_provider.download_drive_file(file_id, access_token_snapshot, str(dest))
+        except Exception as e:
+            logger.info("Google download retry after: %s", e)
+            row = await db.get_integration(
+                integration_row_snapshot["id"], integration_row_snapshot["user_id"]
+            )
+            if not row:
+                raise
+            fresh = await _fresh_google_access_token(row)
+            await google_provider.download_drive_file(file_id, fresh, str(dest))
+
+        size = dest.stat().st_size
+        await db.update_transcription(job_id, video_path=str(dest), file_size=size)
+        await db.update_integration_import(import_id, status="done")
+
+        import asyncio as _asyncio
+        _track_transcription(_asyncio.create_task(_run_with_semaphore(job_id, dest)))
+    except Exception as e:
+        logger.exception("Google Meet import failed for job %s", job_id)
+        await db.update_transcription(
+            job_id, status="error", error_message=f"Google Meet import failed: {e}"
+        )
+        await db.update_integration_import(import_id, status="error", error_message=str(e)[:500])
+
+
+async def google_auto_sync_tick() -> dict:
+    """Poll every Google Meet integration with sync_mode='auto' for new
+    recordings since last_sync_at. Mirror of zoom_auto_sync_tick."""
+    import aiosqlite
+    stats = {"integrations_checked": 0, "queued": 0, "errors": 0}
+    async with aiosqlite.connect(db.DB_PATH) as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(
+            "SELECT * FROM integrations WHERE provider='google_meet' AND sync_mode='auto'"
+        ) as cur:
+            rows = [dict(r) async for r in cur]
+
+    for row in rows:
+        stats["integrations_checked"] += 1
+        try:
+            access_token = await _fresh_google_access_token(row)
+            since_iso = row.get("last_sync_at")
+            now = datetime.now(timezone.utc)
+            if since_iso:
+                try:
+                    since_dt = datetime.fromisoformat(since_iso) - timedelta(minutes=10)
+                except ValueError:
+                    since_dt = now - timedelta(days=1)
+            else:
+                since_dt = now - timedelta(days=7)
+            from_date = since_dt.date().isoformat()
+            to_date = now.date().isoformat()
+
+            page_token = None
+            files_seen = 0
+            while True:
+                data = await google_provider.list_meet_recordings(
+                    access_token,
+                    from_date=from_date,
+                    to_date=to_date,
+                    page_size=100,
+                    page_token=page_token,
+                )
+                for f in data.get("files") or []:
+                    files_seen += 1
+                    r = await _queue_google_import(
+                        user_id=row["user_id"],
+                        integration_row=row,
+                        file_meta=f,
+                        access_token=access_token,
+                        background=None,
+                    )
+                    if r["status"] == "queued":
+                        stats["queued"] += 1
+                page_token = data.get("nextPageToken")
+                if not page_token:
+                    break
+
+            await db.update_integration_sync_state(
+                row["id"],
+                last_sync_at=now.isoformat(),
+                last_sync_status="ok",
+                last_sync_error=None,
+            )
+            logger.info(
+                "Google auto-sync: integration=%s files=%d queued(new)=%s",
+                row["id"], files_seen, stats["queued"],
+            )
+        except Exception as e:
+            stats["errors"] += 1
+            logger.warning("Google auto-sync failed for integration %s: %s", row["id"], e)
+            await db.update_integration_sync_state(
+                row["id"],
+                last_sync_at=datetime.now(timezone.utc).isoformat(),
+                last_sync_status="error",
+                last_sync_error=str(e)[:500],
+            )
+    return stats
+
+
+async def google_auto_sync_loop() -> None:
+    while True:
+        try:
+            await google_auto_sync_tick()
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.warning("Google auto-sync loop iteration failed: %s", e)
+        try:
+            await asyncio.sleep(GOOGLE_POLL_INTERVAL_S)
         except asyncio.CancelledError:
             raise
 
