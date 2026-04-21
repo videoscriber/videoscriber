@@ -507,6 +507,7 @@ async def import_zoom_recording(
         meeting=meeting,
         access_token=access_token,
         background=background,
+        allow_reimport=True,  # manual picker — deleted recordings can come back
     )
     if result["status"] == "no_video":
         raise HTTPException(400, "This recording has no playable video file.")
@@ -522,10 +523,20 @@ async def _queue_zoom_import(
     meeting: dict,
     access_token: str,
     background: BackgroundTasks | None,
+    allow_reimport: bool = False,
 ) -> dict:
     """Shared queue helper. Picks the primary video file, dedupes against
     integration_imports, creates a transcription stub so the UI can poll,
     and schedules the actual download as a background task.
+
+    `allow_reimport` distinguishes the two dedupe policies:
+      - False (default, auto-sync): permanent dedupe by external_id. Once a
+        recording has been imported we never touch it again, even if the
+        user deleted the transcription — that's the signal we respect.
+      - True (manual picker): if the prior transcription was deleted
+        (transcription_id is NULL after the cascade in delete_transcription),
+        allow a fresh import by appending a reimport suffix to the
+        external_id so the unique index still holds.
 
     Returns a dict describing the outcome:
       {status: 'queued', transcription_id, import_id}
@@ -534,7 +545,7 @@ async def _queue_zoom_import(
       {status: 'error', error}
 
     Used by:
-      - POST /zoom/import   (manual picker action)
+      - POST /zoom/import   (manual picker action — allow_reimport=True)
       - POST /zoom/webhook  (recording.completed event)
       - _zoom_auto_sync_loop (background poller)
     """
@@ -543,26 +554,62 @@ async def _queue_zoom_import(
         return {"status": "no_video"}
 
     recording_uuid = str(meeting.get("uuid") or "")
+    external_id = recording_uuid
     import_id = str(uuid.uuid4())
     inserted = await db.create_integration_import(
         import_id,
         integration_row["id"],
         user_id,
-        external_id=recording_uuid,
+        external_id=external_id,
         external_title=meeting.get("topic"),
         status="queued",
     )
     if not inserted:
-        # Dedupe: meeting was previously imported. Return the old job id so
-        # callers can redirect to an already-in-progress transcription.
+        # Look at the prior import(s) for this recording.
         existing = await db.list_integration_imports(integration_row["id"], limit=50)
-        for item in existing:
-            if item["external_id"] == recording_uuid:
-                return {
-                    "status": "already_imported",
-                    "transcription_id": item.get("transcription_id"),
-                }
-        return {"status": "error", "error": "Recording already seen but no record found."}
+        prior = next(
+            (it for it in existing if it["external_id"].split("#", 1)[0] == recording_uuid),
+            None,
+        )
+        if not prior:
+            return {"status": "error", "error": "Recording already seen but no record found."}
+
+        # Live transcription still exists → classic dedupe, same as before.
+        if prior.get("transcription_id"):
+            return {
+                "status": "already_imported",
+                "transcription_id": prior["transcription_id"],
+            }
+
+        # Prior transcription was deleted. Auto-sync respects the deletion
+        # permanently; only a manual re-import gets a fresh record.
+        if not allow_reimport:
+            return {"status": "already_imported", "transcription_id": None}
+
+        # Manual re-import path: suffix the external_id with a timestamp so
+        # the unique (integration_id, external_id) index still holds, and
+        # the auto-sync dedupe keeps matching on the bare UUID.
+        external_id = f"{recording_uuid}#reimport-{int(datetime.now(timezone.utc).timestamp())}"
+        inserted = await db.create_integration_import(
+            import_id,
+            integration_row["id"],
+            user_id,
+            external_id=external_id,
+            external_title=meeting.get("topic"),
+            status="queued",
+        )
+        if not inserted:
+            # Incredibly unlikely — same user hit reimport twice in the same
+            # second. Bump the suffix with a random disambiguator.
+            external_id = f"{external_id}-{uuid.uuid4().hex[:6]}"
+            await db.create_integration_import(
+                import_id,
+                integration_row["id"],
+                user_id,
+                external_id=external_id,
+                external_title=meeting.get("topic"),
+                status="queued",
+            )
 
     job_id = str(uuid.uuid4())
     filename = f"{(meeting.get('topic') or 'Zoom recording').strip()}.mp4"[:255]
