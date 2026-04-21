@@ -203,14 +203,22 @@ async def list_recordings(
     page_size: int = 30,
     next_page_token: str | None = None,
 ) -> dict[str, Any]:
-    """List the authorized user's cloud recordings. Zoom defaults the date
-    range to the last month; callers can pass ISO `YYYY-MM-DD` for `from` and
-    `to` to widen it."""
+    """List the authorized user's cloud recordings. Zoom's /users/me/recordings
+    defaults to the last *month* which is nearly useless for a picker; if the
+    caller doesn't pass a from/to pair we default to the last 6 months so
+    people actually see something to import."""
     params: dict[str, Any] = {"page_size": min(page_size, 300)}
-    if from_date:
-        params["from"] = from_date
-    if to_date:
-        params["to"] = to_date
+    if from_date or to_date:
+        if from_date:
+            params["from"] = from_date
+        if to_date:
+            params["to"] = to_date
+    else:
+        # Six-month default window, calculated in Python so it follows "today".
+        from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+        now = _dt.now(_tz.utc).date()
+        params["from"] = (now - _td(days=180)).isoformat()
+        params["to"] = now.isoformat()
     if next_page_token:
         params["next_page_token"] = next_page_token
 

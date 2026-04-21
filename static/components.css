@@ -1121,6 +1121,33 @@
     overflow-y: auto;
     max-height: 60vh;
 }
+.picker-range {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 18px 12px;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+}
+.picker-range label {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--text-muted);
+}
+.picker-range input[type="date"] {
+    background: var(--surface-0);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 12px;
+    font-family: inherit;
+    outline: none;
+    color-scheme: dark;
+}
+[data-theme="light"] .picker-range input[type="date"] { color-scheme: light; }
+.picker-range .btn {
+    font-size: 12px;
+    padding: 6px 12px;
+    margin-left: auto;
+}
 .picker-loading,
 .picker-empty {
     padding: 2rem 1.25rem;
